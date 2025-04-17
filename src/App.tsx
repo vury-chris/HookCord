@@ -83,6 +83,16 @@ const App: React.FC = () => {
     }
   };
 
+  // Convert ArrayBuffer to Base64
+  const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return window.btoa(binary);
+  };
+
   // Prepare a file for IPC transfer
   const prepareFileForIPC = async (file: File) => {
     // Convert File to simple object with properties that can be serialized
@@ -97,44 +107,31 @@ const App: React.FC = () => {
     };
   };
 
-  // Helper to convert ArrayBuffer to Base64
-  const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    return window.btoa(binary);
-  };
-
   // Send message using webhook
   const sendMessage = async (message: any) => {
     if (!selectedWebhook) return false;
     
     try {
-      // Create a copy of the message without including the webhook's avatar_url
+      // Create a copy of the message
       const messageToSend = { ...message };
       
-      // If the avatarUrl is a data URL, it's too long for Discord
-      // For webhook avatars, we should set the username but not try to use a data URL avatar
+      // Handle webhook username and avatar
       if (selectedWebhook.avatarUrl && selectedWebhook.avatarUrl.startsWith('data:')) {
-        // Set the username from the webhook but don't set avatar_url
+        // Data URLs are too long for Discord - only set username
         messageToSend.username = selectedWebhook.name;
-        // Remove any avatar_url that might be set
         delete messageToSend.avatar_url;
       } else if (selectedWebhook.avatarUrl) {
-        // Only use the avatar_url if it's a proper URL (not a data URL)
+        // Use the avatar URL if it's a proper URL
         messageToSend.avatar_url = selectedWebhook.avatarUrl;
         messageToSend.username = selectedWebhook.name;
       }
       
-      // Prepare files for IPC transfer if they exist
       let success = false;
       
       if (message.files && message.files.length > 0) {
-        // Convert File objects to transferable data
+        // Prepare files for IPC transfer
         const preparedFiles = await Promise.all(
-          message.files.map(file => prepareFileForIPC(file))
+          message.files.map((file: File) => prepareFileForIPC(file))
         );
         
         const messageData = {
@@ -143,7 +140,7 @@ const App: React.FC = () => {
           username: messageToSend.username,
           avatar_url: messageToSend.avatar_url, 
           embeds: messageToSend.embeds,
-          files: preparedFiles // Send prepared files instead of File objects
+          files: preparedFiles
         };
         
         success = await window.api.sendMessageWithFiles(messageData);

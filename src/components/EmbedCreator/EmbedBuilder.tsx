@@ -24,7 +24,12 @@ const colorOptions = [
 // Default empty field
 const emptyField = { name: '', value: '', inline: false };
 
-const EmbedBuilder: React.FC<EmbedBuilderProps> = ({ embed, onChange, onFileUpload, onFileRemove }) => {
+const EmbedBuilder: React.FC<EmbedBuilderProps> = ({ 
+  embed, 
+  onChange, 
+  onFileUpload, 
+  onFileRemove 
+}) => {
   // File input references
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -49,14 +54,6 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({ embed, onChange, onFileUplo
     fields: true
   });
 
-  // Toggle section collapse
-  const toggleSection = (section: keyof typeof sectionsCollapsed) => {
-    setSectionsCollapsed({
-      ...sectionsCollapsed,
-      [section]: !sectionsCollapsed[section]
-    });
-  };
-
   // Initialize embed with default values if null
   useEffect(() => {
     if (!embed) {
@@ -69,6 +66,14 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({ embed, onChange, onFileUplo
     }
   }, [embed, onChange]);
 
+  // Toggle section collapse
+  const toggleSection = (section: keyof typeof sectionsCollapsed) => {
+    setSectionsCollapsed({
+      ...sectionsCollapsed,
+      [section]: !sectionsCollapsed[section]
+    });
+  };
+  
   // Handle changes for basic properties
   const handleChange = (property: string, value: any) => {
     if (!embed) return;
@@ -191,12 +196,11 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({ embed, onChange, onFileUplo
         break;
     }
     
-    // Send the file to the parent component for upload handling
     // Create a new File object with the new filename
     const renamedFile = new File([file], filename, { type: file.type });
     onFileUpload(renamedFile, type);
     
-    // Also create a preview using URL.createObjectURL for the UI
+    // Create a preview using URL.createObjectURL for the UI
     const reader = new FileReader();
     reader.onload = (e) => {
       const result = e.target?.result;
@@ -253,12 +257,9 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({ embed, onChange, onFileUplo
         break;
     }
 
-    // Notify parent to remove the file from the files array
+    // Notify parent to remove the file
     onFileRemove(type);
   };
-
-  // Skip rendering if embed is not initialized yet
-  if (!embed) return null;
 
   // Helper function to determine image source
   const getImagePreviewSrc = (urlFromEmbed: string | undefined, previewFromState: string | null) => {
@@ -272,6 +273,9 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({ embed, onChange, onFileUplo
     // Otherwise use the URL directly
     return urlFromEmbed;
   };
+
+  // Skip rendering if embed is not initialized yet
+  if (!embed) return null;
 
   return (
     <div className="embed-builder">
@@ -865,7 +869,7 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({ embed, onChange, onFileUplo
         }
 
         .form-section {
-          background-color: var(--background-tertiary);
+          background-color: #36393F;
           border-radius: var(--radius-md);
           overflow: hidden;
         }

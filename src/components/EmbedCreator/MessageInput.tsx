@@ -53,6 +53,13 @@ const MessageInput: React.FC<MessageInputProps> = ({
     }
   };
 
+  // Format file size for display
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
   return (
     <div className="message-input">
       <label htmlFor="message-content">Message Content</label>
@@ -273,13 +280,6 @@ const MessageInput: React.FC<MessageInputProps> = ({
       `}</style>
     </div>
   );
-};
-
-// Utility function to format file size
-const formatFileSize = (bytes: number): string => {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 };
 
 export default MessageInput;

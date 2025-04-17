@@ -45,3 +45,4 @@ npm run dev/build/dist
 This project is released under a custom license that allows modification, distribution, and commercial use — however, reselling the software as a standalone product is strictly prohibited. 
 
 For full legal terms, please see the [LICENSE](LICENSE) file.
+

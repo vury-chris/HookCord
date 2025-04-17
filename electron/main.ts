@@ -32,10 +32,6 @@ const createWindow = () => {
   // Load the index.html file
   mainWindow.loadFile(path.join(__dirname, '../index.html'));
   
-  // Open DevTools in development mode
-  if (process.env.NODE_ENV === 'development') {
-    mainWindow.webContents.openDevTools();
-  }
 };
 
 // Initialize app

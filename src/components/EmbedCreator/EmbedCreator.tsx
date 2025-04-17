@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Webhook } from '../../App';
 import MessageInput from './MessageInput';
 import EmbedBuilder from './EmbedBuilder';
+import DiscordPreview from './DiscordPreview';
 import { validateEmbed } from '../../utils/validation';
 
 interface EmbedCreatorProps {
@@ -56,11 +57,21 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
   const [selectedEmbedIndices, setSelectedEmbedIndices] = useState<number[]>([]);
   const [expandedEmbedIndex, setExpandedEmbedIndex] = useState<number | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [embedAttachments, setEmbedAttachments] = useState<File[]>([]);
+  const [embedAttachments, setEmbedAttachments] = useState<Map<string, File>>(new Map());
   const [isSending, setIsSending] = useState<boolean>(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendSuccess, setSendSuccess] = useState<boolean>(false);
   const [useEmbed, setUseEmbed] = useState<boolean>(false);
+
+  // Clear success message after 3 seconds
+  useEffect(() => {
+    if (sendSuccess) {
+      const timer = setTimeout(() => {
+        setSendSuccess(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [sendSuccess]);
 
   const getFilenameFromUrl = (url: string): string | null => {
     if (!url || !url.startsWith('attachment://')) return null;
@@ -71,8 +82,8 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
     const maxFiles = 10;
     const maxSize = 50 * 1024 * 1024;
     
-    let totalSize = 0;
-    for (const file of [...selectedFiles, ...files]) {
+    let totalSize = selectedFiles.reduce((sum, file) => sum + file.size, 0);
+    for (const file of files) {
       totalSize += file.size;
     }
     
@@ -128,6 +139,39 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
 
   const removeEmbed = (index: number) => {
     const newEmbeds = [...embeds];
+    const removedEmbed = newEmbeds[index];
+    
+    // Remove any attachments associated with this embed
+    if (removedEmbed) {
+      const newAttachments = new Map(embedAttachments);
+      
+      // Check thumbnail
+      if (removedEmbed.thumbnail?.url) {
+        const filename = getFilenameFromUrl(removedEmbed.thumbnail.url);
+        if (filename) newAttachments.delete(filename);
+      }
+      
+      // Check image
+      if (removedEmbed.image?.url) {
+        const filename = getFilenameFromUrl(removedEmbed.image.url);
+        if (filename) newAttachments.delete(filename);
+      }
+      
+      // Check author icon
+      if (removedEmbed.author?.icon_url) {
+        const filename = getFilenameFromUrl(removedEmbed.author.icon_url);
+        if (filename) newAttachments.delete(filename);
+      }
+      
+      // Check footer icon
+      if (removedEmbed.footer?.icon_url) {
+        const filename = getFilenameFromUrl(removedEmbed.footer.icon_url);
+        if (filename) newAttachments.delete(filename);
+      }
+      
+      setEmbedAttachments(newAttachments);
+    }
+    
     newEmbeds.splice(index, 1);
     setEmbeds(newEmbeds);
     
@@ -157,9 +201,10 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
     }
   };
 
-  const handleEmbedFileUpload = (file: File, fileType: 'thumbnail' | 'image' | 'author_icon' | 'footer_icon', embedIndex: number) => {
-    const filteredFiles = embedAttachments.filter(f => f.name !== file.name);
-    setEmbedAttachments([...filteredFiles, file]);
+  const handleEmbedFileUpload = (file: File, fileType: 'thumbnail' | 'image' | 'author_icon' | 'footer_icon') => {
+    const newAttachments = new Map(embedAttachments);
+    newAttachments.set(file.name, file);
+    setEmbedAttachments(newAttachments);
   };
 
   const handleEmbedFileRemove = (fileType: 'thumbnail' | 'image' | 'author_icon' | 'footer_icon', embedIndex: number) => {
@@ -192,10 +237,9 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
     }
 
     if (filenameToRemove) {
-      const updatedAttachments = embedAttachments.filter(file => 
-        file.name !== filenameToRemove
-      );
-      setEmbedAttachments(updatedAttachments);
+      const newAttachments = new Map(embedAttachments);
+      newAttachments.delete(filenameToRemove);
+      setEmbedAttachments(newAttachments);
     }
   };
 
@@ -221,11 +265,13 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
   };
 
   const handleSend = async () => {
+    // Check if message has content or files or selected embeds
     if (!message && selectedFiles.length === 0 && (!useEmbed || selectedEmbedIndices.length === 0)) {
       setSendError('Please provide a message, attach files, or select at least one embed');
       return;
     }
 
+    // Validate embeds if used
     if (useEmbed && selectedEmbedIndices.length > 0) {
       const validation = validateSelectedEmbeds();
       if (!validation.isValid) {
@@ -234,6 +280,7 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
       }
     }
 
+    // Prepare payload
     const payload: DiscordMessage = {};
     
     if (message) {
@@ -252,42 +299,48 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
         });
     }
     
-    const selectedEmbedFiles = embedAttachments.filter(file => {
-      for (const index of selectedEmbedIndices) {
-        const embed = embeds[index];
-        if (!embed) continue;
-        
-        if (embed.thumbnail && getFilenameFromUrl(embed.thumbnail.url) === file.name) {
-          return true;
+    // Collect all necessary embed attachments
+    const requiredAttachments = new Set<string>();
+    if (payload.embeds) {
+      for (const embed of payload.embeds) {
+        // Check thumbnail
+        if (embed.thumbnail?.url) {
+          const filename = getFilenameFromUrl(embed.thumbnail.url);
+          if (filename) requiredAttachments.add(filename);
         }
         
-        if (embed.image && getFilenameFromUrl(embed.image.url) === file.name) {
-          return true;
+        // Check image
+        if (embed.image?.url) {
+          const filename = getFilenameFromUrl(embed.image.url);
+          if (filename) requiredAttachments.add(filename);
         }
         
-        if (embed.author && embed.author.icon_url && 
-            getFilenameFromUrl(embed.author.icon_url) === file.name) {
-          return true;
+        // Check author icon
+        if (embed.author?.icon_url) {
+          const filename = getFilenameFromUrl(embed.author.icon_url);
+          if (filename) requiredAttachments.add(filename);
         }
         
-        if (embed.footer && embed.footer.icon_url && 
-            getFilenameFromUrl(embed.footer.icon_url) === file.name) {
-          return true;
+        // Check footer icon
+        if (embed.footer?.icon_url) {
+          const filename = getFilenameFromUrl(embed.footer.icon_url);
+          if (filename) requiredAttachments.add(filename);
         }
       }
-      
-      return false;
-    });
+    }
     
-    const allFiles = [
-      ...selectedFiles,
-      ...selectedEmbedFiles
-    ];
+    // Collect files for payload
+    const embedFiles = Array.from(requiredAttachments)
+      .map(filename => embedAttachments.get(filename))
+      .filter(file => file !== undefined) as File[];
+    
+    const allFiles = [...selectedFiles, ...embedFiles];
     
     if (allFiles.length > 0) {
       payload.files = allFiles;
     }
-
+    
+    // Include webhook username/avatar
     if (webhook.avatarUrl) {
       if (!webhook.avatarUrl.startsWith('data:')) {
         payload.avatar_url = webhook.avatarUrl;
@@ -295,6 +348,7 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
       payload.username = webhook.name;
     }
     
+    // Reset states
     setSendError(null);
     setSendSuccess(false);
     setIsSending(true);
@@ -303,7 +357,10 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
       const success = await onSend(payload);
       
       if (success) {
+        // Show success message but don't reset form completely
         setSendSuccess(true);
+        
+        // Only clear message and selected files, keep embeds for potential reuse
         setMessage('');
         setSelectedFiles([]);
       }
@@ -311,6 +368,7 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
       setSendError('Failed to send the message. Please check your webhook URL and try again.');
       console.error('Error sending message:', error);
     } finally {
+      // Always make sure to set isSending back to false
       setIsSending(false);
     }
   };
@@ -362,55 +420,56 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
       )}
       
       <div className="creator-content">
-        <div className="message-section">
-          <MessageInput 
-            value={message} 
-            onChange={setMessage}
-            onFileSelect={handleFileSelect}
-            selectedFiles={selectedFiles}
-            onFileRemove={handleFileRemove}
-          />
-          
-          <div className="embed-toggle">
-            <label>
-              <input
-                type="checkbox"
-                checked={useEmbed}
-                onChange={(e) => handleUseEmbedToggle(e.target.checked)}
-              />
-              Include Embeds
-            </label>
+        {/* Left column - Editor */}
+        <div className="editor-column">
+          <div className="message-section">
+            <MessageInput 
+              value={message} 
+              onChange={setMessage}
+              onFileSelect={handleFileSelect}
+              selectedFiles={selectedFiles}
+              onFileRemove={handleFileRemove}
+            />
+            
+            <div className="embed-toggle">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={useEmbed}
+                  onChange={(e) => handleUseEmbedToggle(e.target.checked)}
+                />
+                Include Embeds
+              </label>
+            </div>
           </div>
-        </div>
-        
-        {useEmbed && (
-          <div className="embeds-container">
-            {embeds.length > 0 ? (
-              <>
-                <div className="embeds-header">
-                  <div className="embeds-title-area">
-                    <h3>Embeds ({embeds.length}/10)</h3>
-                    {embeds.length > 1 && (
-                      <button 
-                        className="select-all-btn"
-                        onClick={toggleSelectAllEmbeds}
-                      >
-                        {selectedEmbedIndices.length === embeds.length ? 'Deselect All' : 'Select All'}
-                      </button>
-                    )}
-                  </div>
-                  <button 
-                    className="add-embed-btn"
-                    onClick={addEmbed}
-                    disabled={embeds.length >= 10}
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-                      <path d="M12 8V16M8 12H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                    </svg>
-                  </button>
+          
+          {useEmbed && (
+            <div className="embeds-container">
+              <div className="embeds-header">
+                <div className="embeds-title-area">
+                  <h3>Embeds ({embeds.length}/10)</h3>
+                  {embeds.length > 1 && (
+                    <button 
+                      className="select-all-btn"
+                      onClick={toggleSelectAllEmbeds}
+                    >
+                      {selectedEmbedIndices.length === embeds.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                  )}
                 </div>
-                
+                <button 
+                  className="add-embed-btn"
+                  onClick={addEmbed}
+                  disabled={embeds.length >= 10}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                    <path d="M12 8V16M8 12H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                </button>
+              </div>
+              
+              {embeds.length > 0 ? (
                 <div className="embeds-list">
                   {embeds.map((embed, index) => (
                     <div key={index} className="embed-item">
@@ -476,7 +535,7 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
                           <EmbedBuilder
                             embed={embed}
                             onChange={(updatedEmbed) => updateEmbed(index, updatedEmbed)}
-                            onFileUpload={(file, fileType) => handleEmbedFileUpload(file, fileType, index)}
+                            onFileUpload={(file, fileType) => handleEmbedFileUpload(file, fileType)}
                             onFileRemove={(fileType) => handleEmbedFileRemove(fileType, index)}
                           />
                         </div>
@@ -484,44 +543,46 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
                     </div>
                   ))}
                 </div>
-                
-                {embeds.length < 10 && (
-                  <div className="add-embed-container">
-                    <button 
-                      className="add-embed-btn-large"
-                      onClick={addEmbed}
-                    >
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-                        <path d="M12 8V16M8 12H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                      </svg>
-                      Add Embed
-                    </button>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="no-embeds">
-                <button 
-                  className="add-first-embed"
-                  onClick={addEmbed}
-                >
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-                    <path d="M12 8V16M8 12H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                  </svg>
-                  <span>Add your first embed</span>
-                </button>
-              </div>
-            )}
+              ) : (
+                <div className="add-embed-container">
+                  <button 
+                    className="add-embed-btn-large"
+                    onClick={addEmbed}
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                      <path d="M12 8V16M8 12H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    </svg>
+                    Add Embed
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        
+        {/* Right column - Preview */}
+        <div className="preview-column">
+          <div className="preview-header">
+            <h3>Message Preview</h3>
           </div>
-        )}
+          <DiscordPreview
+            message={message}
+            embeds={embeds}
+            selectedEmbedIndices={selectedEmbedIndices}
+            webhookName={webhook.name}
+            webhookAvatar={webhook.avatarUrl}
+            files={selectedFiles}
+            embedAttachments={embedAttachments}
+          />
+        </div>
       </div>
       
       <div className="creator-actions">
         <button 
           onClick={handleSend}
           disabled={isSending || (!message && selectedFiles.length === 0 && (!useEmbed || selectedEmbedIndices.length === 0))}
+          className="send-button"
         >
           {isSending ? 'Sending...' : 'Send Message'}
         </button>
@@ -601,12 +662,39 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
 
         .creator-content {
           display: flex;
-          flex-direction: column;
           gap: var(--spacing-lg);
           flex-grow: 1;
+          height: calc(100vh - 200px);
+          min-height: 400px;
+        }
+        
+        .editor-column, .preview-column {
+          width: 50%;
+          display: flex;
+          flex-direction: column;
+          gap: var(--spacing-md);
+        }
+        
+        .editor-column {
           overflow-y: auto;
-          max-height: calc(100vh - 200px);
           padding-right: var(--spacing-sm);
+        }
+        
+        .preview-column {
+          height: 100%;
+        }
+        
+        .preview-header {
+          display: flex;
+          align-items: center;
+          margin-bottom: var(--spacing-sm);
+        }
+        
+        h3 {
+          margin: 0;
+          color: var(--text-primary);
+          font-size: 16px;
+          font-weight: 600;
         }
 
         .message-section {
@@ -629,7 +717,7 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
         }
 
         .embeds-container {
-          background-color: var(--background-secondary);
+          background-color: #36393F;
           border-radius: var(--radius-md);
           padding: var(--spacing-md);
         }
@@ -661,13 +749,6 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
         .select-all-btn:hover {
           background-color: var(--background-tertiary);
           color: var(--text-primary);
-        }
-
-        h3 {
-          margin: 0;
-          color: var(--text-primary);
-          font-size: 16px;
-          font-weight: 600;
         }
 
         .add-embed-btn {
@@ -840,32 +921,6 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
         .embed-content {
           padding: var(--spacing-md);
           border-top: 1px solid var(--background);
-          width: 100%;
-        }
-
-        .no-embeds {
-          display: flex;
-          justify-content: center;
-          padding: var(--spacing-lg) 0;
-        }
-
-        .add-first-embed {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: var(--spacing-sm);
-          background-color: transparent;
-          color: var(--text-secondary);
-          border: 2px dashed var(--text-muted);
-          border-radius: var(--radius-md);
-          padding: var(--spacing-lg) var(--spacing-xl);
-          cursor: pointer;
-          transition: border-color 0.2s, color 0.2s;
-        }
-
-        .add-first-embed:hover {
-          border-color: var(--accent);
-          color: var(--text-primary);
         }
 
         .add-embed-container {
@@ -896,10 +951,27 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
           display: flex;
           justify-content: flex-end;
           margin-top: var(--spacing-lg);
-          position: sticky;
-          bottom: 0;
-          background-color: var(--background);
           padding-top: var(--spacing-md);
+        }
+        
+        .send-button {
+          background-color: var(--accent);
+          color: white;
+          font-weight: 500;
+          padding: var(--spacing-sm) var(--spacing-md);
+          border-radius: var(--radius-md);
+          border: none;
+          cursor: pointer;
+          transition: background-color 0.2s;
+        }
+        
+        .send-button:hover:not(:disabled) {
+          background-color: var(--button-primary-hover);
+        }
+        
+        .send-button:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
       `}</style>
     </div>
