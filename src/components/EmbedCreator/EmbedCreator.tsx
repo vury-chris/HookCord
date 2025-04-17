@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Webhook } from '../../App';
 import MessageInput from './MessageInput';
 import EmbedBuilder from './EmbedBuilder';
+import { validateEmbed } from '../../utils/validation';
 
 interface EmbedCreatorProps {
   webhook: Webhook;
@@ -9,7 +10,6 @@ interface EmbedCreatorProps {
   onBack: () => void;
 }
 
-// Discord embed interface
 export interface DiscordEmbed {
   title?: string;
   description?: string;
@@ -38,7 +38,6 @@ export interface DiscordEmbed {
   }[];
 }
 
-// Discord message interface
 export interface DiscordMessage {
   content?: string;
   username?: string;
@@ -53,27 +52,24 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
   onBack
 }) => {
   const [message, setMessage] = useState<string>('');
-  const [embed, setEmbed] = useState<DiscordEmbed | null>(null);
+  const [embeds, setEmbeds] = useState<DiscordEmbed[]>([]);
+  const [selectedEmbedIndices, setSelectedEmbedIndices] = useState<number[]>([]);
+  const [expandedEmbedIndex, setExpandedEmbedIndex] = useState<number | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [embedAttachments, setEmbedAttachments] = useState<File[]>([]);
   const [isSending, setIsSending] = useState<boolean>(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendSuccess, setSendSuccess] = useState<boolean>(false);
-
-  // Enable/disable embed creation
   const [useEmbed, setUseEmbed] = useState<boolean>(false);
 
-  // Helper to extract filename from attachment URL
   const getFilenameFromUrl = (url: string): string | null => {
     if (!url || !url.startsWith('attachment://')) return null;
     return url.replace('attachment://', '');
   };
 
-  // Handle file selection for message attachments
   const handleFileSelect = (files: File[]) => {
-    // Limit to 10 files or 50MB total (Discord's limit is actually 25MB for free users)
     const maxFiles = 10;
-    const maxSize = 50 * 1024 * 1024; // 50MB in bytes
+    const maxSize = 50 * 1024 * 1024;
     
     let totalSize = 0;
     for (const file of [...selectedFiles, ...files]) {
@@ -93,26 +89,82 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
     setSelectedFiles([...selectedFiles, ...files]);
   };
 
-  // Handle removing a file from the message
   const handleFileRemove = (index: number) => {
     const newFiles = [...selectedFiles];
     newFiles.splice(index, 1);
     setSelectedFiles(newFiles);
   };
 
-  // Handle file uploads from embed builder
-  const handleEmbedFileUpload = (file: File, fileType: 'thumbnail' | 'image' | 'author_icon' | 'footer_icon') => {
-    // Check if we already have a file with the same name (replacing it)
-    const filteredFiles = embedAttachments.filter(f => f.name !== file.name);
+  const toggleEmbedSelection = (index: number) => {
+    setSelectedEmbedIndices(prev => {
+      if (prev.includes(index)) {
+        return prev.filter(i => i !== index);
+      } else {
+        return [...prev, index];
+      }
+    });
+  };
+
+  const addEmbed = () => {
+    if (embeds.length >= 10) {
+      alert('Discord allows a maximum of 10 embeds per message.');
+      return;
+    }
     
-    // Add the new file
+    const newEmbed: DiscordEmbed = {
+      title: '',
+      description: '',
+      color: undefined,
+      fields: [],
+    };
+    
+    const newEmbeds = [...embeds, newEmbed];
+    setEmbeds(newEmbeds);
+    
+    const newIndex = newEmbeds.length - 1;
+    setSelectedEmbedIndices(prev => [...prev, newIndex]);
+    setExpandedEmbedIndex(newIndex);
+  };
+
+  const removeEmbed = (index: number) => {
+    const newEmbeds = [...embeds];
+    newEmbeds.splice(index, 1);
+    setEmbeds(newEmbeds);
+    
+    setSelectedEmbedIndices(prev => {
+      const filtered = prev.filter(i => i !== index);
+      return filtered.map(i => i > index ? i - 1 : i);
+    });
+    
+    if (expandedEmbedIndex === index) {
+      setExpandedEmbedIndex(null);
+    } else if (expandedEmbedIndex !== null && expandedEmbedIndex > index) {
+      setExpandedEmbedIndex(expandedEmbedIndex - 1);
+    }
+  };
+
+  const updateEmbed = (index: number, updatedEmbed: DiscordEmbed) => {
+    const newEmbeds = [...embeds];
+    newEmbeds[index] = updatedEmbed;
+    setEmbeds(newEmbeds);
+  };
+
+  const toggleEmbedExpansion = (index: number) => {
+    if (expandedEmbedIndex === index) {
+      setExpandedEmbedIndex(null);
+    } else {
+      setExpandedEmbedIndex(index);
+    }
+  };
+
+  const handleEmbedFileUpload = (file: File, fileType: 'thumbnail' | 'image' | 'author_icon' | 'footer_icon', embedIndex: number) => {
+    const filteredFiles = embedAttachments.filter(f => f.name !== file.name);
     setEmbedAttachments([...filteredFiles, file]);
   };
 
-  // Handle file removal from embed builder
-  const handleEmbedFileRemove = (fileType: 'thumbnail' | 'image' | 'author_icon' | 'footer_icon') => {
-    // Determine which file to remove based on the attachment URL in the embed
-    if (!embed) return;
+  const handleEmbedFileRemove = (fileType: 'thumbnail' | 'image' | 'author_icon' | 'footer_icon', embedIndex: number) => {
+    if (embedIndex >= embeds.length) return;
+    const embed = embeds[embedIndex];
 
     let filenameToRemove: string | null = null;
 
@@ -140,7 +192,6 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
     }
 
     if (filenameToRemove) {
-      // Remove the file from embedAttachments
       const updatedAttachments = embedAttachments.filter(file => 
         file.name !== filenameToRemove
       );
@@ -148,68 +199,134 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
     }
   };
 
+  const validateSelectedEmbeds = (): { isValid: boolean; error?: string } => {
+    if (selectedEmbedIndices.length === 0) {
+      return { isValid: false, error: 'Please select at least one embed to send.' };
+    }
+    
+    for (const index of selectedEmbedIndices) {
+      if (index >= embeds.length) continue;
+      
+      const result = validateEmbed(embeds[index]);
+      if (!result.isValid) {
+        return { isValid: false, error: `Embed #${index + 1}: ${result.error}` };
+      }
+    }
+    
+    if (selectedEmbedIndices.length > 10) {
+      return { isValid: false, error: 'Discord allows a maximum of 10 embeds per message.' };
+    }
+    
+    return { isValid: true };
+  };
+
   const handleSend = async () => {
-    // Validate if at least message, files, or embed is provided
-    if (!message && selectedFiles.length === 0 && !useEmbed) {
-      setSendError('Please provide a message, attach files, or create an embed');
+    if (!message && selectedFiles.length === 0 && (!useEmbed || selectedEmbedIndices.length === 0)) {
+      setSendError('Please provide a message, attach files, or select at least one embed');
       return;
     }
 
-    // Prepare the Discord message payload
+    if (useEmbed && selectedEmbedIndices.length > 0) {
+      const validation = validateSelectedEmbeds();
+      if (!validation.isValid) {
+        setSendError(validation.error);
+        return;
+      }
+    }
+
     const payload: DiscordMessage = {};
     
-    // Add message content if provided
     if (message) {
       payload.content = message;
     }
     
-    // Add embed if enabled and created
-    if (useEmbed && embed) {
-      payload.embeds = [embed];
+    if (useEmbed && selectedEmbedIndices.length > 0) {
+      payload.embeds = selectedEmbedIndices
+        .sort((a, b) => a - b)
+        .map(index => embeds[index])
+        .filter(embed => {
+          return embed.title || embed.description || 
+                 (embed.fields && embed.fields.length > 0) ||
+                 embed.image || embed.thumbnail ||
+                 embed.author || embed.footer;
+        });
     }
     
-    // Combine all files for upload
+    const selectedEmbedFiles = embedAttachments.filter(file => {
+      for (const index of selectedEmbedIndices) {
+        const embed = embeds[index];
+        if (!embed) continue;
+        
+        if (embed.thumbnail && getFilenameFromUrl(embed.thumbnail.url) === file.name) {
+          return true;
+        }
+        
+        if (embed.image && getFilenameFromUrl(embed.image.url) === file.name) {
+          return true;
+        }
+        
+        if (embed.author && embed.author.icon_url && 
+            getFilenameFromUrl(embed.author.icon_url) === file.name) {
+          return true;
+        }
+        
+        if (embed.footer && embed.footer.icon_url && 
+            getFilenameFromUrl(embed.footer.icon_url) === file.name) {
+          return true;
+        }
+      }
+      
+      return false;
+    });
+    
     const allFiles = [
       ...selectedFiles,
-      ...embedAttachments
+      ...selectedEmbedFiles
     ];
     
-    // Add files if selected
     if (allFiles.length > 0) {
       payload.files = allFiles;
     }
 
-    // Use webhook avatar if available
     if (webhook.avatarUrl) {
-      // Only use the avatar URL if it's not a data URL
       if (!webhook.avatarUrl.startsWith('data:')) {
         payload.avatar_url = webhook.avatarUrl;
       }
-      // Always set username from webhook
       payload.username = webhook.name;
     }
     
-    // Reset status
     setSendError(null);
     setSendSuccess(false);
     setIsSending(true);
     
     try {
-      // Send the message
       const success = await onSend(payload);
       
       if (success) {
         setSendSuccess(true);
-        // Clear message and files after successful send
         setMessage('');
         setSelectedFiles([]);
-        // Don't clear embed for potential reuse
       }
     } catch (error) {
       setSendError('Failed to send the message. Please check your webhook URL and try again.');
       console.error('Error sending message:', error);
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleUseEmbedToggle = (value: boolean) => {
+    setUseEmbed(value);
+    if (value && embeds.length === 0) {
+      addEmbed();
+    }
+  };
+
+  const toggleSelectAllEmbeds = () => {
+    if (selectedEmbedIndices.length === embeds.length) {
+      setSelectedEmbedIndices([]);
+    } else {
+      setSelectedEmbedIndices(embeds.map((_, i) => i));
     }
   };
 
@@ -259,21 +376,144 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
               <input
                 type="checkbox"
                 checked={useEmbed}
-                onChange={(e) => setUseEmbed(e.target.checked)}
+                onChange={(e) => handleUseEmbedToggle(e.target.checked)}
               />
-              Include Embed
+              Include Embeds
             </label>
           </div>
         </div>
         
         {useEmbed && (
-          <div className="embed-section">
-            <EmbedBuilder
-              embed={embed}
-              onChange={setEmbed}
-              onFileUpload={handleEmbedFileUpload}
-              onFileRemove={handleEmbedFileRemove}
-            />
+          <div className="embeds-container">
+            {embeds.length > 0 ? (
+              <>
+                <div className="embeds-header">
+                  <div className="embeds-title-area">
+                    <h3>Embeds ({embeds.length}/10)</h3>
+                    {embeds.length > 1 && (
+                      <button 
+                        className="select-all-btn"
+                        onClick={toggleSelectAllEmbeds}
+                      >
+                        {selectedEmbedIndices.length === embeds.length ? 'Deselect All' : 'Select All'}
+                      </button>
+                    )}
+                  </div>
+                  <button 
+                    className="add-embed-btn"
+                    onClick={addEmbed}
+                    disabled={embeds.length >= 10}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                      <path d="M12 8V16M8 12H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    </svg>
+                  </button>
+                </div>
+                
+                <div className="embeds-list">
+                  {embeds.map((embed, index) => (
+                    <div key={index} className="embed-item">
+                      <div className="embed-item-header">
+                        <div className="embed-selection">
+                          <label className="discord-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={selectedEmbedIndices.includes(index)}
+                              onChange={() => toggleEmbedSelection(index)}
+                            />
+                            <span className="checkmark"></span>
+                          </label>
+                        </div>
+                        
+                        <div 
+                          className={`embed-preview-header ${!selectedEmbedIndices.includes(index) ? 'disabled' : ''}`}
+                          onClick={() => toggleEmbedExpansion(index)}
+                        >
+                          <div className="embed-preview" style={{ borderLeftColor: embed.color ? `#${embed.color.toString(16)}` : '#202225' }}>
+                            <div className="embed-title-preview">
+                              {embed.title || 'Untitled Embed'}
+                            </div>
+                            {embed.description && (
+                              <div className="embed-description-preview">
+                                {embed.description.length > 60 
+                                  ? embed.description.substring(0, 60) + '...' 
+                                  : embed.description}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="embed-actions">
+                          <button 
+                            className="expand-toggle"
+                            onClick={() => toggleEmbedExpansion(index)}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              {expandedEmbedIndex === index ? (
+                                <path d="M18 15L12 9L6 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              ) : (
+                                <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              )}
+                            </svg>
+                          </button>
+                          <button 
+                            className="remove-embed"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeEmbed(index);
+                            }}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      
+                      {expandedEmbedIndex === index && (
+                        <div className="embed-content">
+                          <EmbedBuilder
+                            embed={embed}
+                            onChange={(updatedEmbed) => updateEmbed(index, updatedEmbed)}
+                            onFileUpload={(file, fileType) => handleEmbedFileUpload(file, fileType, index)}
+                            onFileRemove={(fileType) => handleEmbedFileRemove(fileType, index)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                
+                {embeds.length < 10 && (
+                  <div className="add-embed-container">
+                    <button 
+                      className="add-embed-btn-large"
+                      onClick={addEmbed}
+                    >
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                        <path d="M12 8V16M8 12H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                      </svg>
+                      Add Embed
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="no-embeds">
+                <button 
+                  className="add-first-embed"
+                  onClick={addEmbed}
+                >
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                    <path d="M12 8V16M8 12H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                  <span>Add your first embed</span>
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -281,7 +521,7 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
       <div className="creator-actions">
         <button 
           onClick={handleSend}
-          disabled={isSending || (!message && selectedFiles.length === 0 && (!useEmbed || !embed))}
+          disabled={isSending || (!message && selectedFiles.length === 0 && (!useEmbed || selectedEmbedIndices.length === 0))}
         >
           {isSending ? 'Sending...' : 'Send Message'}
         </button>
@@ -365,8 +605,8 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
           gap: var(--spacing-lg);
           flex-grow: 1;
           overflow-y: auto;
-          max-height: calc(100vh - 200px); /* Adjust based on header and footer heights */
-          padding-right: var(--spacing-sm); /* Add some padding for the scrollbar */
+          max-height: calc(100vh - 200px);
+          padding-right: var(--spacing-sm);
         }
 
         .message-section {
@@ -388,10 +628,268 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
           cursor: pointer;
         }
 
-        .embed-section {
+        .embeds-container {
           background-color: var(--background-secondary);
           border-radius: var(--radius-md);
           padding: var(--spacing-md);
+        }
+
+        .embeds-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: var(--spacing-md);
+        }
+
+        .embeds-title-area {
+          display: flex;
+          align-items: center;
+          gap: var(--spacing-md);
+        }
+
+        .select-all-btn {
+          background: none;
+          border: none;
+          color: var(--text-secondary);
+          font-size: 12px;
+          cursor: pointer;
+          padding: var(--spacing-xs) var(--spacing-sm);
+          border-radius: var(--radius-sm);
+          transition: background-color 0.2s, color 0.2s;
+        }
+
+        .select-all-btn:hover {
+          background-color: var(--background-tertiary);
+          color: var(--text-primary);
+        }
+
+        h3 {
+          margin: 0;
+          color: var(--text-primary);
+          font-size: 16px;
+          font-weight: 600;
+        }
+
+        .add-embed-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          background-color: var(--accent);
+          color: white;
+          border: none;
+          padding: 0;
+          cursor: pointer;
+          transition: background-color 0.2s;
+        }
+
+        .add-embed-btn:hover {
+          background-color: var(--button-primary-hover);
+        }
+
+        .add-embed-btn:disabled {
+          background-color: var(--text-muted);
+          cursor: not-allowed;
+        }
+
+        .embeds-list {
+          display: flex;
+          flex-direction: column;
+          gap: var(--spacing-md);
+        }
+
+        .embed-item {
+          display: flex;
+          flex-direction: column;
+          background-color: var(--background-tertiary);
+          border-radius: var(--radius-md);
+          overflow: hidden;
+        }
+
+        .embed-item-header {
+          display: flex;
+          align-items: center;
+          background-color: var(--background);
+          padding: var(--spacing-sm);
+          cursor: pointer;
+        }
+
+        .embed-selection {
+          display: flex;
+          align-items: center;
+          margin-right: var(--spacing-sm);
+        }
+
+        .discord-checkbox {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+          cursor: pointer;
+          width: 24px;
+          height: 24px;
+        }
+
+        .discord-checkbox input {
+          position: absolute;
+          opacity: 0;
+          cursor: pointer;
+          height: 0;
+          width: 0;
+        }
+
+        .checkmark {
+          position: relative;
+          height: 20px;
+          width: 20px;
+          background-color: var(--background-secondary);
+          border-radius: 4px;
+          transition: all 0.2s ease;
+        }
+
+        .discord-checkbox:hover .checkmark {
+          background-color: rgba(88, 101, 242, 0.2);
+        }
+
+        .discord-checkbox input:checked + .checkmark {
+          background-color: var(--accent);
+        }
+
+        .checkmark:after {
+          content: "";
+          position: absolute;
+          display: none;
+          left: 7px;
+          top: 3px;
+          width: 5px;
+          height: 10px;
+          border: solid white;
+          border-width: 0 2px 2px 0;
+          transform: rotate(45deg);
+        }
+
+        .discord-checkbox input:checked + .checkmark:after {
+          display: block;
+        }
+
+        .embed-preview-header {
+          display: flex;
+          flex-grow: 1;
+          cursor: pointer;
+          transition: opacity 0.2s;
+        }
+
+        .embed-preview-header.disabled {
+          opacity: 0.6;
+        }
+
+        .embed-preview {
+          display: flex;
+          flex-direction: column;
+          padding: var(--spacing-sm) var(--spacing-md);
+          border-left: 4px solid #202225;
+          flex-grow: 1;
+        }
+
+        .embed-title-preview {
+          font-weight: 600;
+          color: var(--text-primary);
+          margin-bottom: var(--spacing-xs);
+        }
+
+        .embed-description-preview {
+          color: var(--text-secondary);
+          font-size: 14px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .embed-actions {
+          display: flex;
+          gap: var(--spacing-xs);
+          margin-left: var(--spacing-sm);
+        }
+
+        .expand-toggle, .remove-embed {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 24px;
+          height: 24px;
+          border-radius: 4px;
+          background-color: var(--background-tertiary);
+          color: var(--text-secondary);
+          border: none;
+          padding: 0;
+          cursor: pointer;
+          transition: background-color 0.2s, color 0.2s;
+        }
+
+        .expand-toggle:hover, .remove-embed:hover {
+          background-color: var(--background-secondary);
+          color: var(--text-primary);
+        }
+
+        .remove-embed:hover {
+          color: var(--danger);
+        }
+
+        .embed-content {
+          padding: var(--spacing-md);
+          border-top: 1px solid var(--background);
+          width: 100%;
+        }
+
+        .no-embeds {
+          display: flex;
+          justify-content: center;
+          padding: var(--spacing-lg) 0;
+        }
+
+        .add-first-embed {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: var(--spacing-sm);
+          background-color: transparent;
+          color: var(--text-secondary);
+          border: 2px dashed var(--text-muted);
+          border-radius: var(--radius-md);
+          padding: var(--spacing-lg) var(--spacing-xl);
+          cursor: pointer;
+          transition: border-color 0.2s, color 0.2s;
+        }
+
+        .add-first-embed:hover {
+          border-color: var(--accent);
+          color: var(--text-primary);
+        }
+
+        .add-embed-container {
+          display: flex;
+          justify-content: center;
+          margin-top: var(--spacing-md);
+        }
+
+        .add-embed-btn-large {
+          display: flex;
+          align-items: center;
+          gap: var(--spacing-sm);
+          background-color: transparent;
+          color: var(--text-secondary);
+          border: 1px dashed var(--text-muted);
+          border-radius: var(--radius-md);
+          padding: var(--spacing-sm) var(--spacing-md);
+          cursor: pointer;
+          transition: border-color 0.2s, color 0.2s;
+        }
+
+        .add-embed-btn-large:hover {
+          border-color: var(--accent);
+          color: var(--text-primary);
         }
 
         .creator-actions {

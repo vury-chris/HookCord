@@ -36,6 +36,26 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({ embed, onChange, onFileUplo
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [authorIconPreview, setAuthorIconPreview] = useState<string | null>(null);
   const [footerIconPreview, setFooterIconPreview] = useState<string | null>(null);
+  
+  // Toggle preview visibility
+  const [showPreview, setShowPreview] = useState<boolean>(false);
+  
+  // UI collapsible sections
+  const [sectionsCollapsed, setSectionsCollapsed] = useState({
+    basic: false,
+    author: true,
+    images: true,
+    footer: true,
+    fields: true
+  });
+
+  // Toggle section collapse
+  const toggleSection = (section: keyof typeof sectionsCollapsed) => {
+    setSectionsCollapsed({
+      ...sectionsCollapsed,
+      [section]: !sectionsCollapsed[section]
+    });
+  };
 
   // Initialize embed with default values if null
   useEffect(() => {
@@ -255,379 +275,444 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({ embed, onChange, onFileUplo
 
   return (
     <div className="embed-builder">
-      <h3>Embed Builder</h3>
-      
-      <div className="embed-preview" style={{ borderLeftColor: embed.color ? `#${embed.color.toString(16)}` : '#202225' }}>
-        {embed.author && (
-          <div className="embed-author">
-            {embed.author.icon_url && (
-              <img 
-                src={getImagePreviewSrc(embed.author.icon_url, authorIconPreview)} 
-                alt="Author icon" 
-                className="author-icon" 
-              />
-            )}
-            <div className="author-name">{embed.author.name}</div>
-          </div>
-        )}
-        
-        {embed.title && <div className="embed-title">{embed.title}</div>}
-        {embed.description && <div className="embed-description">{embed.description}</div>}
-        
-        {embed.thumbnail && (
-          <div className="embed-thumbnail">
-            <img 
-              src={getImagePreviewSrc(embed.thumbnail.url, thumbnailPreview)} 
-              alt="Thumbnail" 
-            />
-          </div>
-        )}
-        
-        {embed.fields && embed.fields.length > 0 && (
-          <div className="embed-fields">
-            {embed.fields.map((field, index) => (
-              <div key={index} className={`embed-field ${field.inline ? 'inline' : ''}`}>
-                {field.name && <div className="field-name">{field.name}</div>}
-                {field.value && <div className="field-value">{field.value}</div>}
-              </div>
-            ))}
-          </div>
-        )}
-        
-        {embed.image && (
-          <div className="embed-image">
-            <img 
-              src={getImagePreviewSrc(embed.image.url, imagePreview)} 
-              alt="Embed image" 
-            />
-          </div>
-        )}
-        
-        {embed.footer && (
-          <div className="embed-footer">
-            {embed.footer.icon_url && (
-              <img 
-                src={getImagePreviewSrc(embed.footer.icon_url, footerIconPreview)} 
-                alt="Footer icon" 
-                className="footer-icon" 
-              />
-            )}
-            <div className="footer-text">{embed.footer.text}</div>
-          </div>
-        )}
+      <div className="builder-header">
+        <h3>Embed Editor</h3>
+        <button 
+          className="preview-toggle-btn"
+          onClick={() => setShowPreview(!showPreview)}
+        >
+          {showPreview ? 'Hide Preview' : 'Show Preview'}
+        </button>
       </div>
       
-      <div className="embed-form">
-        <div className="form-section">
-          <h4>Basic Information</h4>
+      {showPreview && (
+        <div className="embed-preview" style={{ borderLeftColor: embed.color ? `#${embed.color.toString(16)}` : '#202225' }}>
+          {embed.author && (
+            <div className="embed-author">
+              {embed.author.icon_url && (
+                <img 
+                  src={getImagePreviewSrc(embed.author.icon_url, authorIconPreview)} 
+                  alt="Author icon" 
+                  className="author-icon" 
+                />
+              )}
+              <div className="author-name">{embed.author.name}</div>
+            </div>
+          )}
           
-          <div className="form-group">
-            <label htmlFor="embed-title">Title</label>
-            <input
-              id="embed-title"
-              type="text"
-              value={embed.title || ''}
-              onChange={(e) => handleChange('title', e.target.value)}
-              placeholder="Embed Title"
-              maxLength={256}
-            />
-          </div>
+          {embed.title && <div className="embed-title">{embed.title}</div>}
+          {embed.description && <div className="embed-description">{embed.description}</div>}
           
-          <div className="form-group">
-            <label htmlFor="embed-description">Description</label>
-            <textarea
-              id="embed-description"
-              value={embed.description || ''}
-              onChange={(e) => handleChange('description', e.target.value)}
-              placeholder="Embed Description"
-              rows={3}
-              maxLength={4096}
-            />
-          </div>
+          {embed.thumbnail && (
+            <div className="embed-thumbnail">
+              <img 
+                src={getImagePreviewSrc(embed.thumbnail.url, thumbnailPreview)} 
+                alt="Thumbnail" 
+              />
+            </div>
+          )}
           
-          <div className="form-group">
-            <label htmlFor="embed-color">Color</label>
-            <select
-              id="embed-color"
-              value={embed.color || ''}
-              onChange={(e) => handleChange('color', e.target.value ? parseInt(e.target.value) : undefined)}
-            >
-              {colorOptions.map((color) => (
-                <option key={color.name} value={color.value || ''}>
-                  {color.name}
-                </option>
+          {embed.fields && embed.fields.length > 0 && (
+            <div className="embed-fields">
+              {embed.fields.map((field, index) => (
+                <div key={index} className={`embed-field ${field.inline ? 'inline' : ''}`}>
+                  {field.name && <div className="field-name">{field.name}</div>}
+                  {field.value && <div className="field-value">{field.value}</div>}
+                </div>
               ))}
-            </select>
-          </div>
-        </div>
-        
-        <div className="form-section">
-          <h4>Author</h4>
+            </div>
+          )}
           
-          <div className="form-group">
-            <label htmlFor="embed-author-name">Author Name</label>
-            <input
-              id="embed-author-name"
-              type="text"
-              value={(embed.author && embed.author.name) || ''}
-              onChange={(e) => handleNestedChange('author', 'name', e.target.value)}
-              placeholder="Author Name"
-              maxLength={256}
-            />
-          </div>
-          
-          <div className="form-group">
-            <label htmlFor="embed-author-url">Author URL (Optional)</label>
-            <input
-              id="embed-author-url"
-              type="text"
-              value={(embed.author && embed.author.url) || ''}
-              onChange={(e) => handleNestedChange('author', 'url', e.target.value)}
-              placeholder="https://example.com"
-            />
-          </div>
-          
-          <div className="form-group">
-            <label>Author Icon</label>
-            <div className="image-upload">
-              {embed.author && embed.author.icon_url ? (
-                <div className="image-preview">
-                  <img 
-                    src={getImagePreviewSrc(embed.author.icon_url, authorIconPreview)} 
-                    alt="Author icon" 
-                  />
-                  <button 
-                    type="button" 
-                    className="remove-image" 
-                    onClick={() => removeImage('author_icon')}
-                  >
-                    ×
-                  </button>
-                </div>
-              ) : (
-                <button 
-                  type="button" 
-                  className="upload-button"
-                  onClick={() => handleFileSelect('author_icon')}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M17 8L12 3L7 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  Upload Icon
-                </button>
-              )}
-              <input 
-                type="file" 
-                ref={authorIconInputRef} 
-                style={{ display: 'none' }} 
-                accept="image/*"
-                onChange={(e) => handleFileChange(e, 'author_icon')}
+          {embed.image && (
+            <div className="embed-image">
+              <img 
+                src={getImagePreviewSrc(embed.image.url, imagePreview)} 
+                alt="Embed image" 
               />
             </div>
-          </div>
-        </div>
-        
-        <div className="form-section">
-          <h4>Images</h4>
+          )}
           
-          <div className="images-row">
-            <div className="form-group image-column">
-              <label>Thumbnail (Right)</label>
-              <div className="image-upload">
-                {embed.thumbnail ? (
-                  <div className="image-preview">
-                    <img 
-                      src={getImagePreviewSrc(embed.thumbnail.url, thumbnailPreview)} 
-                      alt="Thumbnail" 
-                    />
-                    <button 
-                      type="button" 
-                      className="remove-image" 
-                      onClick={() => removeImage('thumbnail')}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ) : (
-                  <button 
-                    type="button" 
-                    className="upload-button"
-                    onClick={() => handleFileSelect('thumbnail')}
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M17 8L12 3L7 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    Upload Thumbnail
-                  </button>
-                )}
-                <input 
-                  type="file" 
-                  ref={thumbnailInputRef} 
-                  style={{ display: 'none' }} 
-                  accept="image/*"
-                  onChange={(e) => handleFileChange(e, 'thumbnail')}
+          {embed.footer && (
+            <div className="embed-footer">
+              {embed.footer.icon_url && (
+                <img 
+                  src={getImagePreviewSrc(embed.footer.icon_url, footerIconPreview)} 
+                  alt="Footer icon" 
+                  className="footer-icon" 
                 />
-              </div>
-            </div>
-            
-            <div className="form-group image-column">
-              <label>Main Image</label>
-              <div className="image-upload">
-                {embed.image ? (
-                  <div className="image-preview">
-                    <img 
-                      src={getImagePreviewSrc(embed.image.url, imagePreview)} 
-                      alt="Main image" 
-                    />
-                    <button 
-                      type="button" 
-                      className="remove-image" 
-                      onClick={() => removeImage('image')}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ) : (
-                  <button 
-                    type="button" 
-                    className="upload-button"
-                    onClick={() => handleFileSelect('image')}
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M17 8L12 3L7 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    Upload Image
-                  </button>
-                )}
-                <input 
-                  type="file" 
-                  ref={imageInputRef} 
-                  style={{ display: 'none' }} 
-                  accept="image/*"
-                  onChange={(e) => handleFileChange(e, 'image')}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div className="form-section">
-          <h4>Footer</h4>
-          
-          <div className="form-group">
-            <label htmlFor="embed-footer-text">Footer Text</label>
-            <input
-              id="embed-footer-text"
-              type="text"
-              value={(embed.footer && embed.footer.text) || ''}
-              onChange={(e) => handleNestedChange('footer', 'text', e.target.value)}
-              placeholder="Footer Text"
-              maxLength={2048}
-            />
-          </div>
-          
-          <div className="form-group">
-            <label>Footer Icon</label>
-            <div className="image-upload">
-              {embed.footer && embed.footer.icon_url ? (
-                <div className="image-preview">
-                  <img 
-                    src={getImagePreviewSrc(embed.footer.icon_url, footerIconPreview)} 
-                    alt="Footer icon" 
-                  />
-                  <button 
-                    type="button" 
-                    className="remove-image" 
-                    onClick={() => removeImage('footer_icon')}
-                  >
-                    ×
-                  </button>
-                </div>
-              ) : (
-                <button 
-                  type="button" 
-                  className="upload-button"
-                  onClick={() => handleFileSelect('footer_icon')}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M17 8L12 3L7 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  Upload Icon
-                </button>
               )}
-              <input 
-                type="file" 
-                ref={footerIconInputRef} 
-                style={{ display: 'none' }} 
-                accept="image/*"
-                onChange={(e) => handleFileChange(e, 'footer_icon')}
-              />
+              <div className="footer-text">{embed.footer.text}</div>
             </div>
-          </div>
+          )}
         </div>
-        
+      )}
+      
+      {/* Embed Form */}
+      <div className="embed-form">
+        {/* Basic Information Section */}
         <div className="form-section">
-          <div className="fields-header">
-            <h4>Fields</h4>
-            <button 
-              type="button" 
-              className="add-field-btn" 
-              onClick={addField}
-              disabled={(embed.fields?.length || 0) >= 25}
-            >
-              + Add Field
+          <div className="section-header" onClick={() => toggleSection('basic')}>
+            <h4>Basic Information</h4>
+            <button className="toggle-btn">
+              {sectionsCollapsed.basic ? '+' : '-'}
             </button>
           </div>
           
-          {embed.fields && embed.fields.length > 0 ? (
-            <div className="fields-list">
-              {embed.fields.map((field, index) => (
-                <div key={index} className="field-item">
-                  <div className="field-inputs">
-                    <input
-                      type="text"
-                      value={field.name}
-                      onChange={(e) => updateField(index, 'name', e.target.value)}
-                      placeholder="Field Name"
-                      maxLength={256}
-                    />
-                    <textarea
-                      value={field.value}
-                      onChange={(e) => updateField(index, 'value', e.target.value)}
-                      placeholder="Field Value"
-                      rows={2}
-                      maxLength={1024}
-                    />
-                    <label className="inline-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={field.inline || false}
-                        onChange={(e) => updateField(index, 'inline', e.target.checked)}
-                      />
-                      Inline
-                    </label>
-                  </div>
-                  <button 
-                    type="button" 
-                    className="remove-field-btn"
-                    onClick={() => removeField(index)}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
+          {!sectionsCollapsed.basic && (
+            <div className="section-content">
+              <div className="form-group">
+                <label htmlFor="embed-title">Title</label>
+                <input
+                  id="embed-title"
+                  type="text"
+                  value={embed.title || ''}
+                  onChange={(e) => handleChange('title', e.target.value)}
+                  placeholder="Embed Title"
+                  maxLength={256}
+                />
+              </div>
+              
+              <div className="form-group">
+                <label htmlFor="embed-description">Description</label>
+                <textarea
+                  id="embed-description"
+                  value={embed.description || ''}
+                  onChange={(e) => handleChange('description', e.target.value)}
+                  placeholder="Embed Description"
+                  rows={3}
+                  maxLength={4096}
+                />
+              </div>
+              
+              <div className="form-group">
+                <label htmlFor="embed-color">Color</label>
+                <select
+                  id="embed-color"
+                  value={embed.color || ''}
+                  onChange={(e) => handleChange('color', e.target.value ? parseInt(e.target.value) : undefined)}
+                >
+                  {colorOptions.map((color) => (
+                    <option key={color.name} value={color.value || ''}>
+                      {color.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-          ) : (
-            <div className="no-fields">
-              No fields added yet. Fields let you organize information in columns.
+          )}
+        </div>
+        
+        {/* Author Section */}
+        <div className="form-section">
+          <div className="section-header" onClick={() => toggleSection('author')}>
+            <h4>Author</h4>
+            <button className="toggle-btn">
+              {sectionsCollapsed.author ? '+' : '-'}
+            </button>
+          </div>
+          
+          {!sectionsCollapsed.author && (
+            <div className="section-content">
+              <div className="form-group">
+                <label htmlFor="embed-author-name">Author Name</label>
+                <input
+                  id="embed-author-name"
+                  type="text"
+                  value={(embed.author && embed.author.name) || ''}
+                  onChange={(e) => handleNestedChange('author', 'name', e.target.value)}
+                  placeholder="Author Name"
+                  maxLength={256}
+                />
+              </div>
+              
+              <div className="form-group">
+                <label htmlFor="embed-author-url">Author URL (Optional)</label>
+                <input
+                  id="embed-author-url"
+                  type="text"
+                  value={(embed.author && embed.author.url) || ''}
+                  onChange={(e) => handleNestedChange('author', 'url', e.target.value)}
+                  placeholder="https://example.com"
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>Author Icon</label>
+                <div className="image-upload">
+                  {embed.author && embed.author.icon_url ? (
+                    <div className="image-preview">
+                      <img 
+                        src={getImagePreviewSrc(embed.author.icon_url, authorIconPreview)} 
+                        alt="Author icon" 
+                      />
+                      <button 
+                        type="button" 
+                        className="remove-image" 
+                        onClick={() => removeImage('author_icon')}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      type="button" 
+                      className="upload-button"
+                      onClick={() => handleFileSelect('author_icon')}
+                    >
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M17 8L12 3L7 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      Upload Icon
+                    </button>
+                  )}
+                  <input 
+                    type="file" 
+                    ref={authorIconInputRef} 
+                    style={{ display: 'none' }} 
+                    accept="image/*"
+                    onChange={(e) => handleFileChange(e, 'author_icon')}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        {/* Images Section */}
+        <div className="form-section">
+          <div className="section-header" onClick={() => toggleSection('images')}>
+            <h4>Images</h4>
+            <button className="toggle-btn">
+              {sectionsCollapsed.images ? '+' : '-'}
+            </button>
+          </div>
+          
+          {!sectionsCollapsed.images && (
+            <div className="section-content">
+              <div className="images-row">
+                <div className="form-group image-column">
+                  <label>Thumbnail (Right)</label>
+                  <div className="image-upload">
+                    {embed.thumbnail ? (
+                      <div className="image-preview">
+                        <img 
+                          src={getImagePreviewSrc(embed.thumbnail.url, thumbnailPreview)} 
+                          alt="Thumbnail" 
+                        />
+                        <button 
+                          type="button" 
+                          className="remove-image" 
+                          onClick={() => removeImage('thumbnail')}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ) : (
+                      <button 
+                        type="button" 
+                        className="upload-button"
+                        onClick={() => handleFileSelect('thumbnail')}
+                      >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M17 8L12 3L7 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        Upload Thumbnail
+                      </button>
+                    )}
+                    <input 
+                      type="file" 
+                      ref={thumbnailInputRef} 
+                      style={{ display: 'none' }} 
+                      accept="image/*"
+                      onChange={(e) => handleFileChange(e, 'thumbnail')}
+                    />
+                  </div>
+                </div>
+                
+                <div className="form-group image-column">
+                  <label>Main Image</label>
+                  <div className="image-upload">
+                    {embed.image ? (
+                      <div className="image-preview">
+                        <img 
+                          src={getImagePreviewSrc(embed.image.url, imagePreview)} 
+                          alt="Main image" 
+                        />
+                        <button 
+                          type="button" 
+                          className="remove-image" 
+                          onClick={() => removeImage('image')}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ) : (
+                      <button 
+                        type="button" 
+                        className="upload-button"
+                        onClick={() => handleFileSelect('image')}
+                      >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M17 8L12 3L7 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        Upload Image
+                      </button>
+                    )}
+                    <input 
+                      type="file" 
+                      ref={imageInputRef} 
+                      style={{ display: 'none' }} 
+                      accept="image/*"
+                      onChange={(e) => handleFileChange(e, 'image')}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        {/* Footer Section */}
+        <div className="form-section">
+          <div className="section-header" onClick={() => toggleSection('footer')}>
+            <h4>Footer</h4>
+            <button className="toggle-btn">
+              {sectionsCollapsed.footer ? '+' : '-'}
+            </button>
+          </div>
+          
+          {!sectionsCollapsed.footer && (
+            <div className="section-content">
+              <div className="form-group">
+                <label htmlFor="embed-footer-text">Footer Text</label>
+                <input
+                  id="embed-footer-text"
+                  type="text"
+                  value={(embed.footer && embed.footer.text) || ''}
+                  onChange={(e) => handleNestedChange('footer', 'text', e.target.value)}
+                  placeholder="Footer Text"
+                  maxLength={2048}
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>Footer Icon</label>
+                <div className="image-upload">
+                  {embed.footer && embed.footer.icon_url ? (
+                    <div className="image-preview">
+                      <img 
+                        src={getImagePreviewSrc(embed.footer.icon_url, footerIconPreview)} 
+                        alt="Footer icon" 
+                      />
+                      <button 
+                        type="button" 
+                        className="remove-image" 
+                        onClick={() => removeImage('footer_icon')}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      type="button" 
+                      className="upload-button"
+                      onClick={() => handleFileSelect('footer_icon')}
+                    >
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M17 8L12 3L7 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      Upload Icon
+                    </button>
+                  )}
+                  <input 
+                    type="file" 
+                    ref={footerIconInputRef} 
+                    style={{ display: 'none' }} 
+                    accept="image/*"
+                    onChange={(e) => handleFileChange(e, 'footer_icon')}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        {/* Fields Section */}
+        <div className="form-section">
+          <div className="section-header" onClick={() => toggleSection('fields')}>
+            <div className="fields-header">
+              <h4>Fields</h4>
+              <span className="field-count">
+                {embed.fields?.length || 0}/25
+              </span>
+            </div>
+            <button className="toggle-btn">
+              {sectionsCollapsed.fields ? '+' : '-'}
+            </button>
+          </div>
+          
+          {!sectionsCollapsed.fields && (
+            <div className="section-content">
+              <button 
+                type="button" 
+                className="add-field-btn" 
+                onClick={addField}
+                disabled={(embed.fields?.length || 0) >= 25}
+              >
+                + Add Field
+              </button>
+              
+              {embed.fields && embed.fields.length > 0 ? (
+                <div className="fields-list">
+                  {embed.fields.map((field, index) => (
+                    <div key={index} className="field-item">
+                      <div className="field-inputs">
+                        <input
+                          type="text"
+                          value={field.name}
+                          onChange={(e) => updateField(index, 'name', e.target.value)}
+                          placeholder="Field Name"
+                          maxLength={256}
+                        />
+                        <textarea
+                          value={field.value}
+                          onChange={(e) => updateField(index, 'value', e.target.value)}
+                          placeholder="Field Value"
+                          rows={2}
+                          maxLength={1024}
+                        />
+                        <label className="inline-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={field.inline || false}
+                            onChange={(e) => updateField(index, 'inline', e.target.checked)}
+                          />
+                          Inline
+                        </label>
+                      </div>
+                      <button 
+                        type="button" 
+                        className="remove-field-btn"
+                        onClick={() => removeField(index)}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="no-fields">
+                  No fields added yet. Fields let you organize information in columns.
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -638,6 +723,24 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({ embed, onChange, onFileUplo
           display: flex;
           flex-direction: column;
           gap: var(--spacing-md);
+          width: 100%;
+        }
+
+        .builder-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: var(--spacing-sm);
+        }
+
+        .preview-toggle-btn {
+          background: var(--button-secondary);
+          font-size: 12px;
+          padding: var(--spacing-xs) var(--spacing-sm);
+        }
+
+        .preview-toggle-btn:hover {
+          background: var(--button-secondary-hover);
         }
 
         h3, h4 {
@@ -659,6 +762,8 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({ embed, onChange, onFileUplo
           padding: var(--spacing-md);
           border-left: 4px solid #202225;
           margin-bottom: var(--spacing-md);
+          max-height: 300px;
+          overflow-y: auto;
         }
 
         .embed-author {
@@ -710,7 +815,7 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({ embed, onChange, onFileUplo
         .embed-image {
           margin-top: var(--spacing-md);
           max-width: 100%;
-          border-radius: var(--radius-sm);
+          border-radius: var(--radius-md);
           overflow: hidden;
         }
 
@@ -756,13 +861,65 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({ embed, onChange, onFileUplo
         .embed-form {
           display: flex;
           flex-direction: column;
-          gap: var(--spacing-lg);
+          gap: var(--spacing-md);
         }
 
         .form-section {
           background-color: var(--background-tertiary);
           border-radius: var(--radius-md);
+          overflow: hidden;
+        }
+
+        .section-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: var(--spacing-sm) var(--spacing-md);
+          cursor: pointer;
+          background-color: var(--background);
+          transition: background-color 0.2s;
+        }
+
+        .section-header:hover {
+          background-color: rgba(255, 255, 255, 0.05);
+        }
+
+        .fields-header {
+          display: flex;
+          align-items: center;
+          gap: var(--spacing-sm);
+        }
+
+        .field-count {
+          font-size: 12px;
+          color: var(--text-muted);
+        }
+
+        h4 {
+          margin: 0;
+          color: var(--text-secondary);
+          font-size: 14px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .toggle-btn {
+          background: none;
+          border: none;
+          color: var(--text-muted);
+          font-size: 18px;
+          width: 24px;
+          height: 24px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          padding: 0;
+        }
+
+        .section-content {
           padding: var(--spacing-md);
+          border-top: 1px solid var(--background);
         }
 
         .form-group {
@@ -871,16 +1028,25 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({ embed, onChange, onFileUplo
           opacity: 1;
         }
 
-        .fields-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: var(--spacing-md);
-        }
-
         .add-field-btn {
           padding: var(--spacing-xs) var(--spacing-sm);
           font-size: 12px;
+          background-color: var(--accent);
+          color: white;
+          border: none;
+          border-radius: var(--radius-md);
+          cursor: pointer;
+          transition: background-color 0.2s;
+          margin-bottom: var(--spacing-md);
+        }
+
+        .add-field-btn:hover {
+          background-color: var(--button-primary-hover);
+        }
+
+        .add-field-btn:disabled {
+          background-color: var(--text-muted);
+          cursor: not-allowed;
         }
 
         .fields-list {
@@ -937,7 +1103,8 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({ embed, onChange, onFileUplo
           text-align: center;
         }
       `}</style>
-      </div>
-    );
-  };
-  export default EmbedBuilder;
+    </div>
+  );
+};
+
+export default EmbedBuilder;

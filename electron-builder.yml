@@ -1,5 +1,5 @@
 appId: com.webhookmanager.app
-productName: Discord Webhook Manager
+productName: HookCord
 compression: maximum
 asar: true
 directories:
@@ -30,5 +30,5 @@ nsis:
   installerHeaderIcon: assets/images/icons/icon.ico
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: HookPortal
+  shortcutName: HookCord
   artifactName: ${productName} Setup.${ext}
