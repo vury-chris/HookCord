@@ -1,0 +1,15 @@
+#dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+#prod build
+/dist
+/build
+/release
+/out
+
+
+
+
+
