@@ -3,7 +3,6 @@ import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import WebhookLibrary from './components/library/WebhookLibrary';
 import EmbedCreator from './components/EmbedCreator/EmbedCreator';
 
-// Types
 export interface Webhook {
   id: string;
   url: string;
@@ -18,12 +17,10 @@ const App: React.FC = () => {
   const [selectedWebhook, setSelectedWebhook] = useState<Webhook | null>(null);
   const navigate = useNavigate();
 
-  // Load webhooks on initial mount
   useEffect(() => {
     loadWebhooks();
   }, []);
 
-  // Load webhooks from storage
   const loadWebhooks = async () => {
     try {
       const data = await window.api.getWebhooks();
@@ -33,7 +30,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Save a new webhook
   const saveWebhook = async (url: string, name: string, avatarUrl?: string) => {
     try {
       const newWebhook = await window.api.saveWebhook({ url, name, avatarUrl });
@@ -47,16 +43,43 @@ const App: React.FC = () => {
     }
   };
 
-  // Delete a webhook
+  const updateWebhook = async (webhookId: string, name: string, avatarUrl?: string) => {
+    try {
+      const webhook = webhooks.find(w => w.id === webhookId);
+      if (!webhook) throw new Error('Webhook not found');
+      
+      const updatedData = {
+        ...webhook,
+        name, 
+        avatarUrl
+      };
+      
+      const updatedWebhook = await window.api.updateWebhook(webhookId, updatedData);
+      
+      const updatedWebhooks = webhooks.map(w => 
+        w.id === webhookId ? updatedWebhook : w
+      );
+      
+      setWebhooks(updatedWebhooks);
+      
+      if (selectedWebhook && selectedWebhook.id === webhookId) {
+        setSelectedWebhook(updatedWebhook);
+      }
+      
+      return updatedWebhook;
+    } catch (error) {
+      console.error('Failed to update webhook:', error);
+      throw error;
+    }
+  };
+
   const deleteWebhook = async (webhookId: string) => {
     try {
       await window.api.deleteWebhook(webhookId);
       
-      // Update the local state after deletion
       const updatedWebhooks = webhooks.filter(webhook => webhook.id !== webhookId);
       setWebhooks(updatedWebhooks);
       
-      // If the deleted webhook was selected, reset selectedWebhook
       if (selectedWebhook && selectedWebhook.id === webhookId) {
         setSelectedWebhook(null);
       }
@@ -66,24 +89,20 @@ const App: React.FC = () => {
     }
   };
 
-  // Handle webhook selection
   const selectWebhook = (webhook: Webhook) => {
     setSelectedWebhook(webhook);
     navigate('/creator');
   };
 
-  // Update webhook last used timestamp
   const updateWebhookUsage = async (webhookId: string) => {
     try {
       await window.api.updateWebhookUsage(webhookId);
-      // Refresh webhooks after usage update
       loadWebhooks();
     } catch (error) {
       console.error('Failed to update webhook usage:', error);
     }
   };
 
-  // Convert ArrayBuffer to Base64
   const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
     const bytes = new Uint8Array(buffer);
     let binary = '';
@@ -93,43 +112,36 @@ const App: React.FC = () => {
     return window.btoa(binary);
   };
 
-  // Prepare a file for IPC transfer
   const prepareFileForIPC = async (file: File) => {
-    // Convert File to simple object with properties that can be serialized
     const arrayBuffer = await file.arrayBuffer();
     return {
       name: file.name,
       type: file.type,
       size: file.size,
       lastModified: file.lastModified,
-      // Convert ArrayBuffer to Base64 for safe IPC transfer
       data: arrayBufferToBase64(arrayBuffer)
     };
   };
 
-  // Send message using webhook
+  const isDataUrl = (url: string): boolean => {
+    return url?.startsWith('data:');
+  };
+
   const sendMessage = async (message: any) => {
     if (!selectedWebhook) return false;
     
     try {
-      // Create a copy of the message
       const messageToSend = { ...message };
       
-      // Handle webhook username and avatar
-      if (selectedWebhook.avatarUrl && selectedWebhook.avatarUrl.startsWith('data:')) {
-        // Data URLs are too long for Discord - only set username
-        messageToSend.username = selectedWebhook.name;
-        delete messageToSend.avatar_url;
-      } else if (selectedWebhook.avatarUrl) {
-        // Use the avatar URL if it's a proper URL
+      messageToSend.username = selectedWebhook.name;
+      
+      if (selectedWebhook.avatarUrl && !isDataUrl(selectedWebhook.avatarUrl)) {
         messageToSend.avatar_url = selectedWebhook.avatarUrl;
-        messageToSend.username = selectedWebhook.name;
       }
       
       let success = false;
       
       if (message.files && message.files.length > 0) {
-        // Prepare files for IPC transfer
         const preparedFiles = await Promise.all(
           message.files.map((file: File) => prepareFileForIPC(file))
         );
@@ -145,11 +157,9 @@ const App: React.FC = () => {
         
         success = await window.api.sendMessageWithFiles(messageData);
       } else {
-        // Simple JSON message without files
         success = await window.api.sendMessage(selectedWebhook.url, messageToSend);
       }
       
-      // Update usage timestamp
       if (success) {
         await updateWebhookUsage(selectedWebhook.id);
       }
@@ -172,6 +182,7 @@ const App: React.FC = () => {
               onSelect={selectWebhook} 
               onSave={saveWebhook}
               onDelete={deleteWebhook}
+              onUpdate={updateWebhook}
             />
           } 
         />

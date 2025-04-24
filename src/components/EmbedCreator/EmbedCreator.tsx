@@ -63,7 +63,6 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
   const [sendSuccess, setSendSuccess] = useState<boolean>(false);
   const [useEmbed, setUseEmbed] = useState<boolean>(false);
 
-  // Clear success message after 3 seconds
   useEffect(() => {
     if (sendSuccess) {
       const timer = setTimeout(() => {
@@ -141,29 +140,24 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
     const newEmbeds = [...embeds];
     const removedEmbed = newEmbeds[index];
     
-    // Remove any attachments associated with this embed
     if (removedEmbed) {
       const newAttachments = new Map(embedAttachments);
       
-      // Check thumbnail
       if (removedEmbed.thumbnail?.url) {
         const filename = getFilenameFromUrl(removedEmbed.thumbnail.url);
         if (filename) newAttachments.delete(filename);
       }
       
-      // Check image
       if (removedEmbed.image?.url) {
         const filename = getFilenameFromUrl(removedEmbed.image.url);
         if (filename) newAttachments.delete(filename);
       }
       
-      // Check author icon
       if (removedEmbed.author?.icon_url) {
         const filename = getFilenameFromUrl(removedEmbed.author.icon_url);
         if (filename) newAttachments.delete(filename);
       }
       
-      // Check footer icon
       if (removedEmbed.footer?.icon_url) {
         const filename = getFilenameFromUrl(removedEmbed.footer.icon_url);
         if (filename) newAttachments.delete(filename);
@@ -265,13 +259,11 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
   };
 
   const handleSend = async () => {
-    // Check if message has content or files or selected embeds
     if (!message && selectedFiles.length === 0 && (!useEmbed || selectedEmbedIndices.length === 0)) {
       setSendError('Please provide a message, attach files, or select at least one embed');
       return;
     }
 
-    // Validate embeds if used
     if (useEmbed && selectedEmbedIndices.length > 0) {
       const validation = validateSelectedEmbeds();
       if (!validation.isValid) {
@@ -280,7 +272,6 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
       }
     }
 
-    // Prepare payload
     const payload: DiscordMessage = {};
     
     if (message) {
@@ -290,7 +281,19 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
     if (useEmbed && selectedEmbedIndices.length > 0) {
       payload.embeds = selectedEmbedIndices
         .sort((a, b) => a - b)
-        .map(index => embeds[index])
+        .map(index => {
+          const embed = { ...embeds[index] };
+          
+          if (embed.fields) {
+            embed.fields = embed.fields.map(field => ({
+              name: field.name || '',
+              value: field.value || '',
+              inline: field.inline || false
+            }));
+          }
+          
+          return embed;
+        })
         .filter(embed => {
           return embed.title || embed.description || 
                  (embed.fields && embed.fields.length > 0) ||
@@ -299,29 +302,24 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
         });
     }
     
-    // Collect all necessary embed attachments
     const requiredAttachments = new Set<string>();
     if (payload.embeds) {
       for (const embed of payload.embeds) {
-        // Check thumbnail
         if (embed.thumbnail?.url) {
           const filename = getFilenameFromUrl(embed.thumbnail.url);
           if (filename) requiredAttachments.add(filename);
         }
         
-        // Check image
         if (embed.image?.url) {
           const filename = getFilenameFromUrl(embed.image.url);
           if (filename) requiredAttachments.add(filename);
         }
         
-        // Check author icon
         if (embed.author?.icon_url) {
           const filename = getFilenameFromUrl(embed.author.icon_url);
           if (filename) requiredAttachments.add(filename);
         }
         
-        // Check footer icon
         if (embed.footer?.icon_url) {
           const filename = getFilenameFromUrl(embed.footer.icon_url);
           if (filename) requiredAttachments.add(filename);
@@ -329,7 +327,6 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
       }
     }
     
-    // Collect files for payload
     const embedFiles = Array.from(requiredAttachments)
       .map(filename => embedAttachments.get(filename))
       .filter(file => file !== undefined) as File[];
@@ -340,15 +337,12 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
       payload.files = allFiles;
     }
     
-    // Include webhook username/avatar
-    if (webhook.avatarUrl) {
-      if (!webhook.avatarUrl.startsWith('data:')) {
-        payload.avatar_url = webhook.avatarUrl;
-      }
-      payload.username = webhook.name;
+    // Always include username and avatar_url for consistent webhook name/avatar override
+    payload.username = webhook.name;
+    if (webhook.avatarUrl && !webhook.avatarUrl.startsWith('data:')) {
+      payload.avatar_url = webhook.avatarUrl;
     }
     
-    // Reset states
     setSendError(null);
     setSendSuccess(false);
     setIsSending(true);
@@ -357,10 +351,7 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
       const success = await onSend(payload);
       
       if (success) {
-        // Show success message but don't reset form completely
         setSendSuccess(true);
-        
-        // Only clear message and selected files, keep embeds for potential reuse
         setMessage('');
         setSelectedFiles([]);
       }
@@ -368,7 +359,6 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
       setSendError('Failed to send the message. Please check your webhook URL and try again.');
       console.error('Error sending message:', error);
     } finally {
-      // Always make sure to set isSending back to false
       setIsSending(false);
     }
   };
@@ -420,7 +410,6 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
       )}
       
       <div className="creator-content">
-        {/* Left column - Editor */}
         <div className="editor-column">
           <div className="message-section">
             <MessageInput 
@@ -561,7 +550,6 @@ const EmbedCreator: React.FC<EmbedCreatorProps> = ({
           )}
         </div>
         
-        {/* Right column - Preview */}
         <div className="preview-column">
           <div className="preview-header">
             <h3>Message Preview</h3>

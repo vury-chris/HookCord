@@ -8,20 +8,361 @@ interface EmbedBuilderProps {
   onFileRemove: (fileType: 'thumbnail' | 'image' | 'author_icon' | 'footer_icon') => void;
 }
 
-// Available colors for the embed
-const colorOptions = [
-  { name: 'Default', value: null },
-  { name: 'Blue', value: 3447003 },
-  { name: 'Green', value: 5763719 },
-  { name: 'Red', value: 15548997 },
-  { name: 'Orange', value: 15105570 },
-  { name: 'Yellow', value: 16776960 },
-  { name: 'Purple', value: 10181046 },
-  { name: 'Pink', value: 15277667 },
-  { name: 'Cyan', value: 1752220 },
-];
+interface ColorWheelProps {
+  value: number | undefined;
+  onChange: (color: number) => void;
+  onClose: () => void;
+}
 
-// Default empty field
+const ColorWheel: React.FC<ColorWheelProps> = ({ value, onChange, onClose }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const wheelContainerRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [selectedColor, setSelectedColor] = useState<string>(`#${(value || 5763719).toString(16).padStart(6, '0')}`);
+  const [hue, setHue] = useState(0);
+  const [saturation, setSaturation] = useState(100);
+  const [lightness, setLightness] = useState(50);
+  
+  useEffect(() => {
+    if (value) {
+      const hexColor = `#${value.toString(16).padStart(6, '0')}`;
+      setSelectedColor(hexColor);
+      
+      const r = (value >> 16) & 255;
+      const g = (value >> 8) & 255;
+      const b = value & 255;
+      
+      const hslValues = rgbToHsl(r, g, b);
+      setHue(hslValues.h);
+      setSaturation(hslValues.s);
+      setLightness(hslValues.l);
+    }
+    
+    drawColorWheel();
+  }, [value]);
+  
+  useEffect(() => {
+    drawColorWheel();
+  }, []);
+  
+  const drawColorWheel = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const width = canvas.width;
+    const height = canvas.height;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const radius = Math.min(centerX, centerY) - 5;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, width, height);
+    
+    // Draw color wheel
+    for (let angle = 0; angle < 360; angle++) {
+      const startAngle = (angle - 1) * Math.PI / 180;
+      const endAngle = (angle + 1) * Math.PI / 180;
+      
+      ctx.beginPath();
+      ctx.moveTo(centerX, centerY);
+      ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+      ctx.closePath();
+      
+      // Set color based on angle (hue)
+      const hslColor = `hsl(${angle}, 100%, 50%)`;
+      ctx.fillStyle = hslColor;
+      ctx.fill();
+    }
+    
+    // Draw saturation/lightness selector
+    const satLightCanvas = document.createElement('canvas');
+    satLightCanvas.width = 200;
+    satLightCanvas.height = 200;
+    const satLightCtx = satLightCanvas.getContext('2d');
+    
+    if (satLightCtx) {
+      // Saturation gradient (horizontal)
+      const satGradient = satLightCtx.createLinearGradient(0, 0, satLightCanvas.width, 0);
+      satGradient.addColorStop(0, `hsl(${hue}, 0%, 50%)`);
+      satGradient.addColorStop(1, `hsl(${hue}, 100%, 50%)`);
+      satLightCtx.fillStyle = satGradient;
+      satLightCtx.fillRect(0, 0, satLightCanvas.width, satLightCanvas.height);
+      
+      // Lightness gradient (vertical)
+      const lightGradient = satLightCtx.createLinearGradient(0, 0, 0, satLightCanvas.height);
+      lightGradient.addColorStop(0, `rgba(255, 255, 255, 1)`);
+      lightGradient.addColorStop(0.5, `rgba(255, 255, 255, 0)`);
+      lightGradient.addColorStop(0.5, `rgba(0, 0, 0, 0)`);
+      lightGradient.addColorStop(1, `rgba(0, 0, 0, 1)`);
+      satLightCtx.fillStyle = lightGradient;
+      satLightCtx.fillRect(0, 0, satLightCanvas.width, satLightCanvas.height);
+      
+      // Add saturation/lightness canvas to main canvas
+      ctx.drawImage(satLightCanvas, centerX - radius/2, centerY - radius/2, radius, radius);
+    }
+    
+    // Draw indicator on the wheel if there's a value
+    if (value) {
+      const angle = hue * Math.PI / 180;
+      const distance = radius * 0.75; // Position indicator at 75% of radius
+      
+      const x = centerX + Math.cos(angle) * distance;
+      const y = centerY + Math.sin(angle) * distance;
+      
+      ctx.beginPath();
+      ctx.arc(x, y, 10, 0, Math.PI * 2);
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      // Draw saturation/lightness indicator
+      const satX = centerX - radius/2 + (saturation / 100) * radius;
+      const lightY = centerY - radius/2 + (1 - lightness / 100) * radius;
+      
+      ctx.beginPath();
+      ctx.arc(satX, lightY, 8, 0, Math.PI * 2);
+      ctx.strokeStyle = lightness > 50 ? 'black' : 'white';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  };
+  
+  const handleWheelClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const radius = Math.min(centerX, centerY) - 5;
+    
+    // Check if click is on the hue wheel
+    const dx = x - centerX;
+    const dy = y - centerY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    if (distance < radius && distance > radius * 0.5) {
+      // Get angle (hue)
+      let angle = Math.atan2(dy, dx);
+      if (angle < 0) angle += 2 * Math.PI;
+      
+      const newHue = Math.round(angle * 180 / Math.PI);
+      setHue(newHue);
+      
+      // Update color based on HSL
+      const rgbColor = hslToRgb(newHue, saturation, lightness);
+      const hexColor = rgbToHex(rgbColor.r, rgbColor.g, rgbColor.b);
+      setSelectedColor(hexColor);
+      
+      const numColor = parseInt(hexColor.substring(1), 16);
+      onChange(numColor);
+    } 
+    // Check if click is on the saturation/lightness selector
+    else if (x >= centerX - radius/2 && x <= centerX + radius/2 && 
+             y >= centerY - radius/2 && y <= centerY + radius/2) {
+      
+      const satX = (x - (centerX - radius/2)) / radius;
+      const lightY = (y - (centerY - radius/2)) / radius;
+      
+      const newSat = Math.min(100, Math.max(0, Math.round(satX * 100)));
+      const newLight = Math.min(100, Math.max(0, Math.round((1 - lightY) * 100)));
+      
+      setSaturation(newSat);
+      setLightness(newLight);
+      
+      // Update color based on HSL
+      const rgbColor = hslToRgb(hue, newSat, newLight);
+      const hexColor = rgbToHex(rgbColor.r, rgbColor.g, rgbColor.b);
+      setSelectedColor(hexColor);
+      
+      const numColor = parseInt(hexColor.substring(1), 16);
+      onChange(numColor);
+    }
+    
+    drawColorWheel();
+  };
+  
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newColor = e.target.value;
+    setSelectedColor(newColor);
+    
+    // Convert hex to decimal for Discord
+    try {
+      const numColor = parseInt(newColor.substring(1), 16);
+      onChange(numColor);
+      
+      // Update hue, saturation, lightness
+      const r = (numColor >> 16) & 255;
+      const g = (numColor >> 8) & 255;
+      const b = numColor & 255;
+      
+      const hslValues = rgbToHsl(r, g, b);
+      setHue(hslValues.h);
+      setSaturation(hslValues.s);
+      setLightness(hslValues.l);
+      
+      drawColorWheel();
+    } catch (error) {
+      console.error('Invalid color format', error);
+    }
+  };
+  
+  const hslToRgb = (h: number, s: number, l: number) => {
+    h /= 360;
+    s /= 100;
+    l /= 100;
+    
+    let r, g, b;
+    
+    if (s === 0) {
+      r = g = b = l;
+    } else {
+      const hue2rgb = (p: number, q: number, t: number) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1/6) return p + (q - p) * 6 * t;
+        if (t < 1/2) return q;
+        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        return p;
+      };
+      
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      
+      r = hue2rgb(p, q, h + 1/3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1/3);
+    }
+    
+    return {
+      r: Math.round(r * 255),
+      g: Math.round(g * 255),
+      b: Math.round(b * 255)
+    };
+  };
+  
+  const rgbToHsl = (r: number, g: number, b: number) => {
+    r /= 255;
+    g /= 255;
+    b /= 255;
+    
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let h = 0, s = 0;
+    const l = (max + min) / 2;
+    
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+      }
+      
+      h /= 6;
+    }
+    
+    return {
+      h: Math.round(h * 360),
+      s: Math.round(s * 100),
+      l: Math.round(l * 100)
+    };
+  };
+  
+  const rgbToHex = (r: number, g: number, b: number) => {
+    return `#${(r << 16 | g << 8 | b).toString(16).padStart(6, '0')}`;
+  };
+  
+  const handleClickOutside = (e: MouseEvent) => {
+    if (wheelContainerRef.current && !wheelContainerRef.current.contains(e.target as Node)) {
+      onClose();
+    }
+  };
+  
+  useEffect(() => {
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+  
+  return (
+    <div className="color-wheel-container" ref={wheelContainerRef}>
+      <div className="color-wheel-header">
+        <div className="color-preview" style={{ backgroundColor: selectedColor }}></div>
+        <input
+          type="text"
+          value={selectedColor}
+          onChange={handleInputChange}
+          className="color-input"
+        />
+      </div>
+      <canvas
+        ref={canvasRef}
+        width={250}
+        height={250}
+        onClick={handleWheelClick}
+      />
+      <div className="color-wheel-footer">
+        <button onClick={onClose}>Close</button>
+      </div>
+      
+      <style jsx>{`
+        .color-wheel-container {
+          position: absolute;
+          top: -270px;
+          left: 0;
+          z-index: 100;
+          background-color: var(--background-tertiary);
+          border-radius: var(--radius-md);
+          padding: var(--spacing-md);
+          box-shadow: var(--shadow-lg);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+        
+        .color-wheel-header {
+          display: flex;
+          align-items: center;
+          gap: var(--spacing-sm);
+          margin-bottom: var(--spacing-sm);
+          width: 100%;
+        }
+        
+        .color-preview {
+          width: 30px;
+          height: 30px;
+          border-radius: var(--radius-sm);
+        }
+        
+        .color-input {
+          flex-grow: 1;
+        }
+        
+        canvas {
+          cursor: pointer;
+        }
+        
+        .color-wheel-footer {
+          margin-top: var(--spacing-sm);
+          width: 100%;
+          display: flex;
+          justify-content: flex-end;
+        }
+      `}</style>
+    </div>
+  );
+};
+
 const emptyField = { name: '', value: '', inline: false };
 
 const EmbedBuilder: React.FC<EmbedBuilderProps> = ({ 
@@ -30,22 +371,19 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({
   onFileUpload, 
   onFileRemove 
 }) => {
-  // File input references
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const authorIconInputRef = useRef<HTMLInputElement>(null);
   const footerIconInputRef = useRef<HTMLInputElement>(null);
 
-  // State for image previews
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [authorIconPreview, setAuthorIconPreview] = useState<string | null>(null);
   const [footerIconPreview, setFooterIconPreview] = useState<string | null>(null);
   
-  // Toggle preview visibility
   const [showPreview, setShowPreview] = useState<boolean>(false);
+  const [showColorWheel, setShowColorWheel] = useState<boolean>(false);
   
-  // UI collapsible sections
   const [sectionsCollapsed, setSectionsCollapsed] = useState({
     basic: false,
     author: true,
@@ -54,7 +392,6 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({
     fields: true
   });
 
-  // Initialize embed with default values if null
   useEffect(() => {
     if (!embed) {
       onChange({
@@ -66,7 +403,6 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({
     }
   }, [embed, onChange]);
 
-  // Toggle section collapse
   const toggleSection = (section: keyof typeof sectionsCollapsed) => {
     setSectionsCollapsed({
       ...sectionsCollapsed,
@@ -74,7 +410,6 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({
     });
   };
   
-  // Handle changes for basic properties
   const handleChange = (property: string, value: any) => {
     if (!embed) return;
     
@@ -84,7 +419,6 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({
     });
   };
 
-  // Handle nested object changes (footer, author)
   const handleNestedChange = (parent: string, property: string, value: any) => {
     if (!embed) return;
     
@@ -99,7 +433,6 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({
     });
   };
 
-  // Handle adding a new field
   const addField = () => {
     if (!embed) return;
     
@@ -110,7 +443,6 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({
     });
   };
 
-  // Handle field updates
   const updateField = (index: number, property: string, value: any) => {
     if (!embed || !embed.fields) return;
     
@@ -126,7 +458,6 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({
     });
   };
 
-  // Handle field removal
   const removeField = (index: number) => {
     if (!embed || !embed.fields) return;
     
@@ -139,7 +470,6 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({
     });
   };
 
-  // Handle file selection for different image types
   const handleFileSelect = (type: 'thumbnail' | 'image' | 'author_icon' | 'footer_icon') => {
     if (!embed) return;
     
@@ -153,34 +483,28 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({
     fileInput.current?.click();
   };
 
-  // Handle file change after selection
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'thumbnail' | 'image' | 'author_icon' | 'footer_icon') => {
     if (!embed) return;
     
     const file = e.target.files?.[0];
     if (!file) return;
     
-    // Check file size (max 8MB for Discord embeds)
     if (file.size > 8 * 1024 * 1024) {
       alert('Image is too large. Maximum size is 8MB.');
       return;
     }
     
-    // Check file type
     if (!file.type.startsWith('image/')) {
       alert('Please upload an image file.');
       return;
     }
     
-    // Generate a unique filename for the attachment
     const timestamp = new Date().getTime();
     let filename = `${type}_${timestamp}`;
     
-    // Add the appropriate extension
     const extension = file.name.split('.').pop() || 'png';
     filename += `.${extension}`;
     
-    // Update the embed to use attachment:// URL
     switch (type) {
       case 'thumbnail':
         handleChange('thumbnail', { url: `attachment://${filename}` });
@@ -196,16 +520,13 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({
         break;
     }
     
-    // Create a new File object with the new filename
     const renamedFile = new File([file], filename, { type: file.type });
     onFileUpload(renamedFile, type);
     
-    // Create a preview using URL.createObjectURL for the UI
     const reader = new FileReader();
     reader.onload = (e) => {
       const result = e.target?.result;
       if (typeof result === 'string') {
-        // Store the preview in state
         switch (type) {
           case 'thumbnail':
             setThumbnailPreview(result);
@@ -224,11 +545,9 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({
     };
     reader.readAsDataURL(file);
     
-    // Reset input value so the same file can be selected again
     e.target.value = '';
   };
 
-  // Remove an image
   const removeImage = (type: 'thumbnail' | 'image' | 'author_icon' | 'footer_icon') => {
     if (!embed) return;
     
@@ -257,24 +576,19 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({
         break;
     }
 
-    // Notify parent to remove the file
     onFileRemove(type);
   };
 
-  // Helper function to determine image source
   const getImagePreviewSrc = (urlFromEmbed: string | undefined, previewFromState: string | null) => {
     if (!urlFromEmbed) return '';
     
-    // If it's an attachment URL, use the preview from state
     if (urlFromEmbed.startsWith('attachment://')) {
       return previewFromState || '';
     }
     
-    // Otherwise use the URL directly
     return urlFromEmbed;
   };
 
-  // Skip rendering if embed is not initialized yet
   if (!embed) return null;
 
   return (
@@ -351,9 +665,7 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({
         </div>
       )}
       
-      {/* Embed Form */}
       <div className="embed-form">
-        {/* Basic Information Section */}
         <div className="form-section">
           <div className="section-header" onClick={() => toggleSection('basic')}>
             <h4>Basic Information</h4>
@@ -390,23 +702,25 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({
               
               <div className="form-group">
                 <label htmlFor="embed-color">Color</label>
-                <select
-                  id="embed-color"
-                  value={embed.color || ''}
-                  onChange={(e) => handleChange('color', e.target.value ? parseInt(e.target.value) : undefined)}
-                >
-                  {colorOptions.map((color) => (
-                    <option key={color.name} value={color.value || ''}>
-                      {color.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="color-selector">
+                  <div 
+                    className="color-preview" 
+                    style={{ backgroundColor: embed.color ? `#${embed.color.toString(16)}` : '#202225' }}
+                    onClick={() => setShowColorWheel(true)}
+                  ></div>
+                  {showColorWheel && (
+                    <ColorWheel 
+                      value={embed.color}
+                      onChange={(color) => handleChange('color', color)}
+                      onClose={() => setShowColorWheel(false)}
+                    />
+                  )}
+                </div>
               </div>
             </div>
           )}
         </div>
         
-        {/* Author Section */}
         <div className="form-section">
           <div className="section-header" onClick={() => toggleSection('author')}>
             <h4>Author</h4>
@@ -484,7 +798,6 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({
           )}
         </div>
         
-        {/* Images Section */}
         <div className="form-section">
           <div className="section-header" onClick={() => toggleSection('images')}>
             <h4>Images</h4>
@@ -582,7 +895,6 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({
           )}
         </div>
         
-        {/* Footer Section */}
         <div className="form-section">
           <div className="section-header" onClick={() => toggleSection('footer')}>
             <h4>Footer</h4>
@@ -649,7 +961,6 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({
           )}
         </div>
         
-        {/* Fields Section */}
         <div className="form-section">
           <div className="section-header" onClick={() => toggleSection('fields')}>
             <div className="fields-header">
@@ -681,13 +992,13 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({
                       <div className="field-inputs">
                         <input
                           type="text"
-                          value={field.name}
+                          value={field.name || ''}
                           onChange={(e) => updateField(index, 'name', e.target.value)}
                           placeholder="Field Name"
                           maxLength={256}
                         />
                         <textarea
-                          value={field.value}
+                          value={field.value || ''}
                           onChange={(e) => updateField(index, 'value', e.target.value)}
                           placeholder="Field Value"
                           rows={2}
@@ -970,6 +1281,22 @@ const EmbedBuilder: React.FC<EmbedBuilderProps> = ({
 
         textarea {
           resize: vertical;
+        }
+
+        .color-selector {
+          position: relative;
+        }
+
+        .color-preview {
+          width: 100%;
+          height: 40px;
+          border-radius: var(--radius-md);
+          cursor: pointer;
+          transition: transform 0.2s;
+        }
+
+        .color-preview:hover {
+          transform: scale(1.02);
         }
 
         .image-upload {

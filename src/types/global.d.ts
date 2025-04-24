@@ -1,29 +1,31 @@
-import { DiscordMessage } from '../components/EmbedCreator/EmbedCreator';
+import { Webhook } from '../App';
 
-// Global type declarations
 declare global {
   interface Window {
     api: {
-      // Get webhooks from storage
-      getWebhooks: () => Promise<{ webhooks: any[] }>;
+     
+      getWebhooks: () => Promise<{ webhooks: Webhook[] }>;
       
-      // Save a webhook to storage
+      
       saveWebhook: (webhook: { 
         url: string; 
         name: string; 
         avatarUrl?: string 
-      }) => Promise<any>;
+      }) => Promise<Webhook>;
       
-      // Update last used timestamp for a webhook
+      
+      updateWebhook: (webhookId: string, webhookData: Partial<Webhook>) => Promise<Webhook>;
+      
+      
       updateWebhookUsage: (webhookId: string) => Promise<boolean>;
       
-      // Delete a webhook from storage
+      
       deleteWebhook: (webhookId: string) => Promise<boolean>;
       
-      // Send a message via webhook (without files)
-      sendMessage: (url: string, message: DiscordMessage) => Promise<boolean>;
       
-      // Send a message with files via webhook
+      sendMessage: (url: string, message: any) => Promise<boolean>;
+      
+      
       sendMessageWithFiles: (messageData: {
         url: string;
         content?: string;
@@ -36,5 +38,4 @@ declare global {
   }
 }
 
-// This empty export is needed to make this a module
 export {};

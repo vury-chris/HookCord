@@ -1,24 +1,48 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Webhook } from '../../App';
 
 interface WebhookFormProps {
+  webhook?: Webhook;
   onSave: (url: string, name: string, avatarUrl?: string) => Promise<void>;
   onCancel: () => void;
   isLoading: boolean;
+  isEditing?: boolean;
 }
 
 const WebhookForm: React.FC<WebhookFormProps> = ({ 
+  webhook,
   onSave, 
   onCancel,
-  isLoading 
+  isLoading,
+  isEditing = false
 }) => {
   const [url, setUrl] = useState('');
   const [name, setName] = useState('');
   const [urlError, setUrlError] = useState('');
   const [avatar, setAvatar] = useState<string | null>(null);
+  const [avatarType, setAvatarType] = useState<'upload' | 'url'>('upload');
+  const [avatarUrlInput, setAvatarUrlInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (webhook && isEditing) {
+      setUrl(webhook.url);
+      setName(webhook.name);
+      
+      if (webhook.avatarUrl) {
+        if (webhook.avatarUrl.startsWith('http')) {
+          setAvatarType('url');
+          setAvatarUrlInput(webhook.avatarUrl);
+          setAvatar(webhook.avatarUrl);
+        } else {
+          setAvatarType('upload');
+          setAvatar(webhook.avatarUrl);
+        }
+      }
+    }
+  }, [webhook, isEditing]);
+
   const validateUrl = (input: string) => {
-    // Simple Discord webhook URL validation
     const discordWebhookRegex = /^https:\/\/discord\.com\/api\/webhooks\/\d+\/[\w-]+$/;
     return discordWebhookRegex.test(input);
   };
@@ -26,17 +50,21 @@ const WebhookForm: React.FC<WebhookFormProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validate URL
-    if (!validateUrl(url)) {
+    if (!isEditing && !validateUrl(url)) {
       setUrlError('Please enter a valid Discord webhook URL');
       return;
     }
     
-    // Use default name if not provided
     const webhookName = name.trim() || 'Unnamed Webhook';
     
-    // Save webhook
-    onSave(url, webhookName, avatar || undefined);
+    let finalAvatarUrl = undefined;
+    if (avatarType === 'url' && avatarUrlInput) {
+      finalAvatarUrl = avatarUrlInput;
+    } else if (avatarType === 'upload' && avatar) {
+      finalAvatarUrl = avatar;
+    }
+    
+    onSave(url, webhookName, finalAvatarUrl);
   };
 
   const handleAvatarClick = () => {
@@ -47,19 +75,16 @@ const WebhookForm: React.FC<WebhookFormProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
     
-    // Check file size (max 1MB)
     if (file.size > 1024 * 1024) {
       alert('Image is too large. Maximum size is 1MB.');
       return;
     }
     
-    // Check file type
     if (!file.type.startsWith('image/')) {
       alert('Please upload an image file.');
       return;
     }
     
-    // Convert to data URL
     const reader = new FileReader();
     reader.onload = (e) => {
       const result = e.target?.result;
@@ -73,6 +98,7 @@ const WebhookForm: React.FC<WebhookFormProps> = ({
   const removeAvatar = (e: React.MouseEvent) => {
     e.stopPropagation();
     setAvatar(null);
+    setAvatarUrlInput('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -81,39 +107,9 @@ const WebhookForm: React.FC<WebhookFormProps> = ({
   return (
     <div className="webhook-form-container">
       <div className="webhook-form">
-        <h2>Add New Webhook</h2>
+        <h2>{isEditing ? 'Edit Webhook' : 'Add New Webhook'}</h2>
         
         <form onSubmit={handleSubmit}>
-          <div className="avatar-upload" onClick={handleAvatarClick}>
-            {avatar ? (
-              <div className="avatar-preview">
-                <img src={avatar} alt="Webhook avatar" />
-                <button 
-                  type="button" 
-                  className="remove-avatar" 
-                  onClick={removeAvatar}
-                >
-                  ×
-                </button>
-              </div>
-            ) : (
-              <div className="avatar-placeholder">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 8V16M8 12H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2"/>
-                </svg>
-                <span>Add Avatar</span>
-              </div>
-            )}
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              style={{ display: 'none' }} 
-              accept="image/*"
-              onChange={handleFileChange}
-            />
-          </div>
-          
           <div className="form-group">
             <label htmlFor="webhook-url">Discord Webhook URL</label>
             <input
@@ -126,12 +122,18 @@ const WebhookForm: React.FC<WebhookFormProps> = ({
               }}
               placeholder="https://discord.com/api/webhooks/..."
               required
+              disabled={isEditing}
             />
             {urlError && <div className="input-error">{urlError}</div>}
+            {isEditing && (
+              <div className="form-help">
+                Webhook URL cannot be changed
+              </div>
+            )}
           </div>
           
           <div className="form-group">
-            <label htmlFor="webhook-name">Webhook Name (Optional)</label>
+            <label htmlFor="webhook-name">Webhook Name</label>
             <input
               id="webhook-name"
               type="text"
@@ -139,6 +141,95 @@ const WebhookForm: React.FC<WebhookFormProps> = ({
               onChange={(e) => setName(e.target.value)}
               placeholder="My Discord Webhook"
             />
+            <div className="form-help">
+              This name will override the webhook's original name when sending messages
+            </div>
+          </div>
+          
+          <div className="form-group">
+            <label>Webhook Avatar</label>
+            
+            <div className="avatar-type-selector">
+              <label className={`avatar-type-option ${avatarType === 'upload' ? 'selected' : ''}`}>
+                <input
+                  type="radio"
+                  name="avatarType"
+                  value="upload"
+                  checked={avatarType === 'upload'}
+                  onChange={() => setAvatarType('upload')}
+                />
+                Upload Image
+              </label>
+              
+              <label className={`avatar-type-option ${avatarType === 'url' ? 'selected' : ''}`}>
+                <input
+                  type="radio"
+                  name="avatarType"
+                  value="url"
+                  checked={avatarType === 'url'}
+                  onChange={() => setAvatarType('url')}
+                />
+                Image URL
+              </label>
+            </div>
+            
+            {avatarType === 'upload' ? (
+              <div className="avatar-upload" onClick={handleAvatarClick}>
+                {avatar && avatarType === 'upload' ? (
+                  <div className="avatar-preview">
+                    <img src={avatar} alt="Webhook avatar" />
+                    <button 
+                      type="button" 
+                      className="remove-avatar" 
+                      onClick={removeAvatar}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ) : (
+                  <div className="avatar-placeholder">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12 8V16M8 12H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2"/>
+                    </svg>
+                    <span>Add Avatar</span>
+                  </div>
+                )}
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  style={{ display: 'none' }} 
+                  accept="image/*"
+                  onChange={handleFileChange}
+                />
+                <div className="form-help">
+                  Uploaded avatars will only appear in the app, not in Discord messages.
+                  To use a custom avatar in Discord, use an image URL instead.
+                </div>
+              </div>
+            ) : (
+              <div className="url-input-container">
+                <input
+                  type="url"
+                  value={avatarUrlInput}
+                  onChange={(e) => {
+                    setAvatarUrlInput(e.target.value);
+                    setAvatar(e.target.value);
+                  }}
+                  placeholder="https://example.com/image.png"
+                />
+                <div className="form-help">
+                  Image URL must be publicly accessible. This will appear in Discord messages.
+                </div>
+                {avatarUrlInput && (
+                  <div className="avatar-preview-url">
+                    <img src={avatarUrlInput} alt="Preview" onError={() => {
+                      setAvatar(null);
+                    }} />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           
           <div className="form-actions">
@@ -152,9 +243,9 @@ const WebhookForm: React.FC<WebhookFormProps> = ({
             </button>
             <button 
               type="submit"
-              disabled={isLoading || !url.trim()}
+              disabled={isLoading || (!isEditing && !url.trim())}
             >
-              {isLoading ? 'Creating...' : 'Create Webhook'}
+              {isLoading ? (isEditing ? 'Updating...' : 'Creating...') : (isEditing ? 'Update Webhook' : 'Create Webhook')}
             </button>
           </div>
         </form>
@@ -184,8 +275,10 @@ const WebhookForm: React.FC<WebhookFormProps> = ({
         .avatar-upload {
           display: flex;
           justify-content: center;
-          margin-bottom: var(--spacing-lg);
+          margin-bottom: var(--spacing-sm);
           cursor: pointer;
+          flex-direction: column;
+          align-items: center;
         }
 
         .avatar-placeholder {
@@ -199,6 +292,7 @@ const WebhookForm: React.FC<WebhookFormProps> = ({
           justify-content: center;
           color: var(--text-secondary);
           transition: background-color 0.2s;
+          margin-bottom: var(--spacing-sm);
         }
 
         .avatar-placeholder:hover {
@@ -216,9 +310,24 @@ const WebhookForm: React.FC<WebhookFormProps> = ({
           height: 96px;
           border-radius: 50%;
           overflow: hidden;
+          margin-bottom: var(--spacing-sm);
         }
 
         .avatar-preview img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        
+        .avatar-preview-url {
+          width: 96px;
+          height: 96px;
+          border-radius: 50%;
+          overflow: hidden;
+          margin-top: var(--spacing-sm);
+        }
+        
+        .avatar-preview-url img {
           width: 100%;
           height: 100%;
           object-fit: cover;
@@ -263,8 +372,19 @@ const WebhookForm: React.FC<WebhookFormProps> = ({
           margin-bottom: var(--spacing-xs);
         }
 
+        input:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
         .input-error {
           color: var(--danger);
+          font-size: 12px;
+          margin-top: var(--spacing-xs);
+        }
+
+        .form-help {
+          color: var(--text-muted);
           font-size: 12px;
           margin-top: var(--spacing-xs);
         }
@@ -279,6 +399,42 @@ const WebhookForm: React.FC<WebhookFormProps> = ({
         button:disabled {
           opacity: 0.5;
           cursor: not-allowed;
+        }
+        
+        .avatar-type-selector {
+          display: flex;
+          margin-bottom: var(--spacing-md);
+          gap: var(--spacing-md);
+        }
+        
+        .avatar-type-option {
+          display: flex;
+          align-items: center;
+          gap: var(--spacing-xs);
+          padding: var(--spacing-xs) var(--spacing-sm);
+          border-radius: var(--radius-sm);
+          cursor: pointer;
+          transition: background-color 0.2s;
+        }
+        
+        .avatar-type-option:hover {
+          background-color: var(--background-tertiary);
+        }
+        
+        .avatar-type-option.selected {
+          background-color: var(--accent);
+          color: white;
+        }
+        
+        .avatar-type-option input {
+          margin: 0;
+          width: auto;
+        }
+        
+        .url-input-container {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
         }
       `}</style>
     </div>
