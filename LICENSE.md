@@ -25,4 +25,4 @@ This software is provided free of charge under the following terms. By using, mo
 
 9. No Endorsement: You may not use the name of the software, its authors, or contributors to promote or endorse derived works without explicit permission from the copyright holder.
 
-For any questions or requests for clarification, please contact vuryex at [christopherle1223@gmail.com].
+For any questions or requests for clarification, please contact [vurye](mailto:christopherle1223@gmail.com).
